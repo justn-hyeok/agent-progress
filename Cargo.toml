@@ -1,0 +1,28 @@
+[package]
+name = "agent-progress"
+version = "1.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "ap"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+fs2 = "0.4"
+# Rendered line count keeps wrapped Korean detail scrolling within its content.
+# Pin the release while using this opt-in API.
+ratatui = { version = "=0.30.2", default-features = false, features = ["std", "crossterm", "unstable-rendered-line-info"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "=0.10.0"
+tempfile = "3"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
+rusqlite = "0.39"
+unicode-width = "0.2"
+unicode-segmentation = "1"
+sha1_smol = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }

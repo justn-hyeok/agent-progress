@@ -1,0 +1,27 @@
+# Copy to .agent-progress/ui.yaml. YAML takes priority over legacy ui.json.
+# Quote hex colors: a bare # starts a YAML comment.
+schema: 1
+position: above
+auto_open: true
+preset: my_forest
+background_brightness: 1.0 # 0.25 .. 2.0; only background channels are scaled
+
+presets:
+  my_forest:
+    extends: forest # signal / forest / ocean / amber, or another custom preset
+    theme:
+      accent: "#C7F96C"
+
+# These override the selected preset. Omit roles to inherit them.
+theme:
+  metadata: "#B6C4BA"
+
+# State colors express status, while the filled area still expresses checklist count.
+states:
+  working: { fill: "#34543B" }
+  waiting: { fill: "#3B4655" }
+  blocked: { fill: "#60451F", metadata: "#E5D5B8" }
+  paused: { fill: "#423952" }
+  error: { fill: "#613636", metadata: "#E8CAC9" }
+  done: { fill: "#285744" }
+  empty: { track: "#18212B" }

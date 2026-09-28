@@ -1,0 +1,7 @@
+/target/
+*.ap-lock
+/.agent-progress/
+/dist/
+/.codex/
+/AGENTS.md
+/docs/evidence/

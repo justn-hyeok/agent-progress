@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "project_id": "976f71b9-8397-4a84-878b-d542f9f8156d",
+  "objective": "agent-progress 제품 완성",
+  "roadmap": "docs/product-completion-plan.md",
+  "required": {"AP-05": "automated", "AP-24": "human"}
+}

@@ -1,0 +1,15 @@
+pub mod bridge;
+pub mod connection;
+pub mod dashboard;
+pub mod doctor;
+mod fault;
+pub mod herdr;
+pub mod live;
+pub mod mcp;
+pub mod model;
+pub mod project;
+pub mod recovery;
+pub mod runner;
+pub mod settings;
+pub mod store;
+pub mod ui;

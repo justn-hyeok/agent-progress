@@ -1,0 +1,62 @@
+---
+name: ap
+description: Use the agent-progress ap CLI to show an existing coding-agent goal and plan in a passive progress pane, configure project-local connections or themes, and diagnose or recover progress state. Use when the user requests ap or agent-progress; ordinary coding or a generic progress update alone does not require it.
+---
+
+# ap — agent-progress
+
+Keep the user's existing goal and plan visible without asking them to register tasks,
+copy session UUIDs or maintain a second checklist. The observer reads progress; it does
+not supervise agents or prove that reported work passed verification.
+
+## Start from the current project
+
+Check `ap --version` and the relevant command's `--help`; these instructions target 1.1.0.
+If the binary is missing, install it when installation is within the request, using
+[connection.md](references/connection.md). Do not change global agent settings.
+
+For a progress pane, verify the current agent's Herdr context and exact source ownership.
+Run `ap open` from that agent's pane; it opens or reuses the managed observer without
+changing focus. Connected hooks normally do this automatically. Use an explicit `--pane`
+only when that source is established by live metadata, not the focused or newest pane.
+Do not split an extra pane manually if an owned observer already exists.
+
+If connection is absent or fails, read [connection.md](references/connection.md). Resolve
+the local cause yourself when authorized. Ask only for a necessary user-owned trust or
+authentication action. Do not ask the user to paste IDs that local metadata can supply.
+Outside Herdr, use file mode, an explicitly selected rollout or plain text summaries;
+do not claim automatic pane placement is available.
+
+## Maintain the existing plan
+
+Use the harness's native plan/task tool when available. For a harness adapter that reads
+explicit assistant reports, publish the real plan at meaningful checkpoints:
+
+```markdown
+### 진행 계획
+목표: 사용자와 합의한 현재 목표
+- [x] 이미 끝낸 작업
+- [>] 지금 진행 중인 작업
+- [ ] 다음 작업
+```
+
+Keep unchanged item wording stable. If `ap.project.json` defines roadmap IDs, link the
+existing IDs in the rows. A child such as `[AP-05/native]` cannot certify the entire
+`[AP-05]` acceptance item. Do not invent a product manifest, new native goal or reduced
+scope merely to make a progress bar appear complete.
+
+Distinguish agent reports, observed process activity, automated checks and human evidence.
+Checklist completion is neither an ETA nor independent product acceptance. Missing items
+are not silently cancelled. Never mark unverified work complete to improve the percentage.
+
+## Task-specific actions
+
+- Connection, automatic opening, placement and exact-session diagnosis:
+  [connection.md](references/connection.md).
+- Presets, brightness, YAML and hot reload: [themes.md](references/themes.md).
+- Resume, evidence, backup/restore and portable state: [recovery.md](references/recovery.md).
+
+Apply only the requested changes. Preserve existing plans, project data and user settings.
+Do not write raw transcripts, credentials or unrelated conversation into progress evidence.
+If source identity remains ambiguous, stop that connection and report the specific cause;
+do not attach to another session by recency.

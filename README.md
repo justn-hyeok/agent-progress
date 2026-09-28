@@ -1,5 +1,9 @@
 # agent-progress
 
+에이전트용 스킬은 [skills/ap/SKILL.md](skills/ap/SKILL.md)에 있다. Codex의
+skills 디렉터리에 `skills/ap` 폴더를 복사하면 `$ap`로 호출할 수 있다.
+연결·진행 보고·테마·복귀/복구 사용법을 포함하며 앱 설치와 스킬 설치는 별개다.
+
 macOS Apple Silicon에서 Homebrew로 설치:
 
 ```sh

@@ -1,5 +1,16 @@
 # agent-progress
 
+macOS Apple Silicon에서 Homebrew로 설치:
+
+```sh
+brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progress
+brew install justn-hyeok/agent-progress/agent-progress
+ap --version
+```
+
+업데이트는 `brew update` 후 `brew upgrade agent-progress`, 제거는
+`brew uninstall agent-progress`다. 프로젝트 데이터와 에이전트 설정은 보존된다.
+
 1.1.0: 색상 프리셋, 배경 밝기, 상태별 배경과 YAML 조합을 지원한다.
 Herdr 자동 호출과 위/아래 배치, Codex/Claude Code/OpenCode 연결, 공통 모델과
 코드 지문 근거, 계획 변경/복구/다중 목표, 로컬 MCP를 제공한다.

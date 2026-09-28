@@ -1,5 +1,25 @@
 # macOS 배포
 
+## Homebrew
+
+기존 저장소의 `Formula/agent-progress.rb`를 사용자 지정 tap으로 제공한다.
+
+```sh
+brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progress
+brew install justn-hyeok/agent-progress/agent-progress
+```
+
+Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치한다.
+Rust, Node, Herdr는 설치 의존성이 아니다. macOS arm64 전용이다.
+`brew update && brew upgrade agent-progress`로 업데이트하고
+`brew uninstall agent-progress`로 제거한다. `.agent-progress` 데이터는 보존한다.
+자동 에이전트 연결은 설치 후 프로젝트에서 별도로 `ap connect apply`로 설정한다.
+Homebrew 설치는 개발자 서명이나 공증을 추가하지 않는다.
+
+새 버전 배포 시 formula의 version, url, sha256을 함께 갱신한다.
+
+## 압축 패키지
+
 현재 지원 실증 대상은 macOS 26.6.2 / arm64다. 다른 OS/아키텍처는 미검증이며
 지원 완료로 표시하지 않는다. Apple Developer 배포 서명과 공증은 없다.
 빌드 도구가 부여하는 로컬 ad-hoc 서명은 개발자 인증/공증의 증거가 아니다.

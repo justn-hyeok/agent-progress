@@ -1,5 +1,9 @@
 # Current release plan
 
+Homebrew follow-up: publish Formula/agent-progress.rb in this repository as a custom
+tap, verify real install/test and document upgrade/uninstall. Existing v1.1.0 assets
+and their checksum remain unchanged.
+
 Goal: publish the 1.1.0 source and unsigned macOS arm64 package to GitHub.
 
 - [x] [AP-16/theme-1.1.0] Implement YAML, presets, brightness and state colors.

@@ -1,0 +1,20 @@
+name: Homebrew install
+on:
+  push:
+    paths: ['Formula/**', '.github/workflows/homebrew.yml']
+  pull_request:
+    paths: ['Formula/**', '.github/workflows/homebrew.yml']
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: macos-14
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew tap justn-hyeok/agent-progress "$GITHUB_WORKSPACE"
+      - run: brew install justn-hyeok/agent-progress/agent-progress
+      - run: brew test justn-hyeok/agent-progress/agent-progress
+      - run: ap --version

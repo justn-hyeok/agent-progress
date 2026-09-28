@@ -1,10 +1,14 @@
 # agent-progress
 
-에이전트용 스킬은 [skills/ap/SKILL.md](skills/ap/SKILL.md)에 있다. Codex의
-skills 디렉터리에 `skills/ap` 폴더를 복사하면 `$ap`로 호출할 수 있다.
-연결·진행 보고·테마·복귀/복구 사용법을 포함하며 앱 설치와 스킬 설치는 별개다.
+**에이전트가 지금 무엇을 하고 있고, 다음에 무엇을 할지 한눈에 보는 터미널 진행 창.**
 
-macOS Apple Silicon에서 Homebrew로 설치:
+Codex·Claude Code·OpenCode의 기존 목표와 계획을 읽어 Herdr의 별도 창에 표시합니다. 작업을 다시 등록하거나 세션 ID를 복사할 필요 없이, 평소 쓰던 에이전트의 계획을 따라갑니다.
+
+[다운로드](https://github.com/justn-hyeok/agent-progress/releases/latest) · [에이전트 스킬](skills/ap/SKILL.md) · [운영·복구](docs/operations.md) · [변경 이력](CHANGELOG.md)
+
+## 설치
+
+현재 배포 패키지는 **macOS Apple Silicon용**입니다. Homebrew로 설치합니다.
 
 ```sh
 brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progress
@@ -12,127 +16,129 @@ brew install justn-hyeok/agent-progress/agent-progress
 ap --version
 ```
 
-업데이트는 `brew update` 후 `brew upgrade agent-progress`, 제거는
-`brew uninstall agent-progress`다. 프로젝트 데이터와 에이전트 설정은 보존된다.
-
-1.1.0: 색상 프리셋, 배경 밝기, 상태별 배경과 YAML 조합을 지원한다.
-Herdr 자동 호출과 위/아래 배치, Codex/Claude Code/OpenCode 연결, 공통 모델과
-코드 지문 근거, 계획 변경/복구/다중 목표, 로컬 MCP를 제공한다.
-
-[다운로드](https://github.com/justn-hyeok/agent-progress/releases/latest)에서
-macOS arm64 패키지와 SHA-256을 받는다. [설치](docs/distribution.md),
-[운영·복구와 테마](docs/operations.md)를 참고한다. Apple Developer 서명/공증은 없다.
-로컬 세션 원문과 사용자 화면 캡처는 공개 저장소에 포함하지 않는다.
-
-Herdr에서 에이전트 아래의 **별도 터미널**에 띄우는 진행 상황 창.
-기존 goal·plan을 체크리스트로 가져와 완료/전체 체크율을 자동으로 표시한다.
-
-현재 지원 실증 대상: macOS 26.6.2 arm64, Herdr 0.9.0, Codex 0.157.1,
-Claude Code 2.1.274, OpenCode 1.18.30. 지원 버전의 입력/재시작 증거를 별도 기록한다.
-
-- [제품 범위와 설계](docs/product-and-design.md)
-- [제품 전체 완료 계획](docs/product-completion-plan.md)
-- [현재 상황과 이어 할 일](docs/handoff.md)
-- [현재 구현 계획과 남은 제품 범위](docs/current-plan.md)
-- [저장 형식과 신뢰 경계](docs/storage-v1.md)
-- [세션 연결 방식과 지원 범위](docs/session-follow.md)
-- [제품 목표와 세션 계획의 연결 계약](docs/core-connection.md)
-
-## 실행
-
-Rust/Cargo로 한 번 빌드하고, **Codex pane 바로 아래에 split한 터미널**에서
-실행한다. init/add나 작업 UUID 입력은 필요 없다.
+Rust·Node·Herdr는 패키지 설치 의존성이 아닙니다. 진행 창 자동 생성과 위치 이동에는 Herdr가 필요합니다. Homebrew 대신 릴리즈의 `.tar.gz`와 체크섬을 받아 설치할 수도 있습니다. [패키지 설치 방법](docs/distribution.md)을 참고하세요.
 
 ```sh
-cargo build --locked
-./target/debug/ap
+# 업데이트
+brew update
+brew upgrade agent-progress
+
+# 제거 — 프로젝트 데이터는 보존
+brew uninstall agent-progress
 ```
 
-위 pane의 정확한 Codex 프로세스가 열고 있는 세션을 연결한다. 현재 포커스,
-같은 폴더의 최신 파일, 임의의 다른 세션으로 연결하지 않는다. 다른 배치라면
-`ap follow --pane <에이전트-pane-ID>`로 한 번 연결 대상을 지정한다.
+## 에이전트 연결
 
-에이전트가 자기 pane에서 `ap open`을 호출하면 아래쪽에 새 창을 열고 정확한
-세션을 넘긴다. 이미 진행 상황 창이 있다면 새로 열 필요가 없다.
-
-계획에서 항목이 빠져도 기존 완료 기록과 미완료 항목은 보존한다. 빠진 미완료는
-`!`로 표시하고 체크율 분모에 남긴다. 목표가 바뀌면 이전 체크리스트를 이력에
-보관한다. 계획이 없으면 체크율은 **미정**이다.
-
-진행 상황 창은 조작 없이 읽는다. 창 전체의 채움은 제품 체크리스트 완료 비율이며,
-텍스트에는 제품 목표·현재 계획·계획상 작업·실제 제품 계획 파일을 표시한다.
-에이전트가 명시한 진행 계획의 `목표:`가 있으면 그 문구를 현재 계획 이름으로 쓴다.
-5줄에서는 제품 목표 선언 파일도 보인다. 3줄은 목표·현재 상태·제품 계획 파일,
-1줄은 비율·현재 상태를 우선한다. 창을 키우면 마지막 변경 시각과 체크리스트가
-자동으로 보인다. 계획 파일이 없는 Codex native Plan은 세션 출처로 표시한다.
-종료할 때는 `q` 또는 `Ctrl-C`를 누른다.
-
-완료 체크는 **에이전트 보고**다. 테스트 실행 결과나 사람 확인을 증명하지 않는다.
-Herdr의 작업 중/입력 대기 표시는 체크율과 별도의 활동 관측이다.
-
-## 어떤 계획을 읽나
-
-`ap.project.json`이 있으면 기존 제품 계획을 전체 기준으로 삼는다. 이 repo는
-제품 계획의 AP-01~AP-24에 연결돼 있다. 임시 작업 종료나 세션 교체로 제품 목표와
-완료 수를 초기화하지 않는다. 전체 항목은 `[AP-05]`, 부분 작업은 `[AP-05/native]`
-처럼 연결한다. 부분 작업 완료만으로 전체 항목을 완료 처리하지 않는다.
-
-Codex native Plan 모드의 `Plan` 이벤트와 해당 thread의 goal을 읽는다.
-일반 실행의 명시적 진행 보고도 같은 계획의 상태를 이어 갱신한다.
-`update_plan`/`plan_update` 입력도 지원하지만, 현재 설치본의 일반 실행에서는
-그 tool이 노출되지 않으므로 native Plan 모드와 구별한다. goal DB는 필수가 아니다.
-
-native plan 도구가 없는 환경에서는 에이전트가 대화에 작성하는 아래 형식을
-읽는다. **사용자가 항목을 등록하는 절차가 아니라 에이전트의 개발 계획 형식**이다.
-현재 세션은 이 경로로 실제 연결했다.
-
-```markdown
-### 진행 계획
-목표: 로그인 기능 완성
-- [x] 구조 확인
-- [>] API 구현
-- [ ] 테스트
-```
-
-일반 대화 목록이나 사용자가 붙인 예시를 무작정 작업으로 추정하지 않는다.
-native Plan 뒤의 명시적 실행 보고도 반영하며 출처를 구별한다. 세션 목표 변경은
-제품 목표/전체 항목을 교체하지 않는다. 코드 블록·인용문 속 예시는 제외한다. 원본 세션과 하네스
-설정은 수정하지 않는다. 세부 지원 형식은 [연결 문서](docs/session-follow.md)를 참고한다.
-
-## 파일 모드와 진단
-
-기존 `ap/demo.md`와 `--file … init/add/status/evidence/watch` 명령은 보존했다.
-이 파일 모드는 자동 연결의 필수 단계가 아니다. 세부 명령은 `ap --help`로
-확인할 수 있다. 아래 명령은 UI 없이 한 번 관찰한 결과를 출력한다. 독립 세션은
-원본을 읽기만 하고, 제품 선언에 연결된 경우 제품의 영속 진행 기록을 갱신한다.
+Herdr 안에서 작업할 프로젝트로 이동한 뒤, 사용할 에이전트를 연결합니다. Codex의 경우:
 
 ```sh
-./target/debug/ap follow --pane <에이전트-pane-ID> --once
-./target/debug/ap follow --session <Codex-session-ID> --once
+ap connect preview --agent codex
+ap connect apply --agent codex
+ap launch --agent codex
 ```
 
-세션 checkpoint는 `.agent-progress/<session-ID>.json`, 제품 기록은
-`.agent-progress/project-<제품-ID>.json`에 저장한다. 새 세션에서도 같은 제품
-선언에 연결되면 전체 진행을 이어간다. 임의의 세션 교체나
-손상은 자동으로 다른 데이터로 대체하지 않고 오류/오래된 상태로 표시한다.
+`preview`는 적용 내용을 보여주고, `apply`는 프로젝트의 연결 설정을 백업한 뒤 추가합니다. `launch`는 설치된 Codex를 각 창의 세션을 식별할 수 있는 모드로 실행합니다. 프로젝트 신뢰나 훅 승인이 요구되면 해당 에이전트에서 확인하세요.
 
-## 검증
+연결된 훅이 원본 세션을 확인하면 진행 창을 자동으로 엽니다. 에이전트는 기존 계획 도구를 그대로 사용합니다. 원본이 확정된 에이전트 창에서 `ap open`으로 직접 열 수도 있습니다.
+
+| 에이전트 | 연결 명령 | 읽는 계획 |
+| --- | --- | --- |
+| Codex | `ap connect apply --agent codex` | Native Plan·명시적 진행 보고·선택적 goal |
+| Claude Code | `ap connect apply --agent claude` | TodoWrite·TaskCreate/TaskUpdate·명시적 진행 보고 |
+| OpenCode | `ap connect apply --agent opencode` | Native todos·명시적 진행 보고 |
+
+Claude Code와 OpenCode도 설정 적용 후 훅·플러그인을 읽는 세션에서 작업합니다. 연결 설정은 프로젝트 안에서만 관리하며 에이전트 전역 설정은 바꾸지 않습니다. [연결 조건과 진단](docs/operations.md)을 참고하세요.
+
+## `$ap` 스킬
+
+에이전트에게 연결·테마·복구를 맡기려면 [ap 스킬](skills/ap/SKILL.md)을 설치하세요. **앱의 Homebrew 설치와 스킬 설치는 별개입니다.**
+
+Codex에게 다음처럼 요청하면 됩니다.
+
+```text
+https://github.com/justn-hyeok/agent-progress/tree/main/skills/ap 스킬을 설치해줘.
+```
+
+또는 저장소의 `skills/ap` 폴더 전체를 Codex의 skills 디렉터리(기본 `~/.codex/skills/ap`)로 복사합니다. 기존 같은 이름의 스킬이 있다면 먼저 내용을 확인하세요. 설치 후 다음 턴부터 호출할 수 있습니다.
+
+```text
+$ap 이 프로젝트의 기존 계획을 진행 창에 연결해줘.
+$ap 배경을 좀 더 밝게 하고 위쪽에 띄워줘.
+$ap 연결이 끊긴 이유를 확인하고 복구해줘.
+```
+
+스킬은 기존 목표와 계획을 유지합니다. 별도 체크리스트 등록이나 진행률을 맞추기 위한 완료 처리를 요구하지 않습니다.
+
+## 화면과 진행 기준
+
+작은 창은 목표·현재 작업·다음 작업·완료율을 보여줍니다. 창을 키우면 작업 목록, 완료 조건, 검증 근거와 이력이 나타납니다. `q` 또는 `Ctrl-C`로 진행 창을 종료합니다.
+
+| 기능 | 동작 |
+| --- | --- |
+| 자동 관찰 | 기존 계획 변경과 작업 상태를 읽어 반영 |
+| 창 관리 | 자동 생성, 중복 창 재사용, 세션 재연결 |
+| 위·아래 배치 | 관리된 수직 형제 창의 위치 변경과 기존 크기·포커스 유지 |
+| 테마 | 색상 프리셋, 배경 밝기, 상태별 색, YAML 조합과 실시간 반영 |
+| 계획·근거 | 고정 작업 ID, 선행 작업, 완료 조건, 코드 변경에 따른 재검증 표시 |
+| 복귀·보존 | 최근 작업 요약, 다중 목표 조회, 백업·복원·내보내기·가져오기 |
+| 연동 | 선택적 파일 모드, 연결 진단, 로컬 stdio MCP |
+
+완료율은 **체크리스트의 완료 비율**입니다. 남은 시간이나 검증된 제품 완성도를 뜻하지 않습니다. 에이전트의 완료 보고, 실제 프로세스 활동, 자동 검사, 사람 확인은 구분합니다. 계획이 없으면 완료율은 미정이며, 목록에서 빠진 미완료 항목을 임의로 완료·취소하지 않습니다.
+
+`ap.project.json`이 있는 프로젝트는 그 제품 계획을 전체 기준으로 삼습니다. 세부 작업의 완료가 상위 수용 항목 전체를 완료시키지는 않습니다. [제품 계획 연결 계약](docs/core-connection.md)을 참고하세요.
+
+## 테마와 위치
 
 ```sh
+ap config presets
+ap config set --preset forest --brightness 1.2
+ap config set --accent '#88AAFF'
+
+# 위쪽 배치를 기본값으로 저장하고 적용
+ap config set --position above
+ap open
+```
+
+기본 프리셋은 `signal`, `forest`, `ocean`, `amber`입니다. 밝기는 0.25~2.0이며 배경에만 적용됩니다. 프리셋을 바꾸면 기존 개별 색 덮어쓰기는 해제됩니다.
+
+색을 직접 조합하려면 현재 설정을 YAML로 옮깁니다.
+
+```sh
+ap config init-yaml
+```
+
+생성된 `.agent-progress/ui.yaml`에서 프리셋 상속, 색상별 덮어쓰기, 작업 중·대기·막힘·일시 중지·오류·완료·빈 상태의 색을 설정할 수 있습니다. [YAML 예제](docs/theme-example.yaml)와 [설정 설명](skills/ap/references/themes.md)을 참고하세요. YAML은 기존 `ui.json`보다 우선하며, 잘못된 편집 중에는 실행 중 창의 마지막 정상 색을 유지합니다.
+
+## 복귀와 진단
+
+제품 계획이 연결된 프로젝트에서:
+
+```sh
+ap product summary
+ap product resume
+```
+
+이미 확인된 원본 pane의 연결 상태는 `ap doctor --pane SOURCE`로 진단합니다. 복구 명령과 충돌·백업 처리 방법은 [운영 문서](docs/operations.md)에 있습니다. 최신 로그나 현재 포커스만으로 다른 세션을 임의 선택하지 않습니다.
+
+Herdr 밖에서도 파일 모드, 명시한 Codex 세션 기록 읽기, 테마 설정과 MCP를 사용할 수 있습니다. 자세한 명령은 `ap --help`와 각 하위 명령의 `--help`에서 확인하세요.
+
+## 지원과 검증
+
+릴리즈 검증 환경은 macOS 26.6.2 arm64, Herdr 0.9.0, Codex 0.157.1, Claude Code 2.1.274, OpenCode 1.18.30입니다. 다른 OS·아키텍처와 에이전트 버전의 호환성은 별도로 확인해야 합니다. Codex 공유 daemon의 원본 창을 확정할 수 없으면 자동 연결을 거부합니다.
+
+Apple Developer 서명·공증은 없습니다. 로컬 세션 원문, 인증 파일과 사용자 화면 캡처는 공개 저장소에 포함하지 않습니다.
+
+v1.1.0은 Rust 테스트 83개, fmt·Clippy, 실제 터미널 입출력 검사와 설치 패키지 검사를 통과했습니다. Homebrew 설치·실행 검사도 별도 CI에서 실행합니다. [GitHub Actions](https://github.com/justn-hyeok/agent-progress/actions)에서 커밋별 결과를 확인할 수 있습니다.
+
+## 소스 빌드
+
+```sh
+cargo build --locked --release
+./target/release/ap --version
+
 cargo fmt --check
-cargo test --locked
+HERDR_ENV=0 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
-cargo build --locked
-python3 scripts/pty_smoke.py
-python3 scripts/pty_follow.py
-python3 scripts/pty_review.py
-python3 scripts/pty_product.py
 ```
 
-`python3 scripts/native_contract.py`는 실제 Codex 모델 호출이 있는 native 연동
-검사다. 사용자 세션 대신 별도 테스트 세션과 선언을 사용한다.
-
-Rust 테스트는 도메인/저장, 실제 CLI, 세션 입력·잘못된 연결·계획 동기화,
-한국어 TUI를 검사한다. PTY 테스트는 fixture 세션의 실시간 변경, 오류 복구,
-재실행, 80×14→40×12와 q/Ctrl-C 복원을 검사한다. 실제 Herdr 증거와 fixture
-검증은 [인계 문서](docs/handoff.md)에 구분한다.
+상세 설계와 저장 형식은 [제품 범위](docs/product-and-design.md), [저장 형식](docs/storage-v1.md), [세션 입력](docs/session-follow.md), [운영·복구](docs/operations.md)를 참고하세요.

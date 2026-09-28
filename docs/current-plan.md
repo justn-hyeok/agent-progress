@@ -1,8 +1,9 @@
 # Current release plan
 
-Homebrew follow-up: publish Formula/agent-progress.rb in this repository as a custom
-tap, verify real install/test and document upgrade/uninstall. Existing v1.1.0 assets
-and their checksum remain unchanged.
+Homebrew follow-up completed: Formula/agent-progress.rb is published as a custom tap.
+Real GitHub download/install/reinstall and brew test passed on macOS arm64; brew style
+and audit passed. The Homebrew install CI passed for bd3afcdf321703e17ebe92d929b02074a3593865.
+Upgrade/uninstall commands are documented. Existing v1.1.0 assets and checksum remain unchanged.
 
 Goal: publish the 1.1.0 source and unsigned macOS arm64 package to GitHub.
 

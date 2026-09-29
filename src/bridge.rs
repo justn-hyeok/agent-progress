@@ -415,10 +415,12 @@ pub fn register_client(
     let rollout = rollout.canonicalize()?;
     let (actual_session, actual_cwd) = live::session_header(&rollout)?;
     ensure!(
-        actual_session == session
-            && Path::new(&actual_cwd).canonicalize()? == cwd.canonicalize()?,
+        actual_session == session,
         "native client response/transcript identity mismatch"
     );
+    // A resumed thread may override its execution cwd; the legacy header records
+    // its creation project. Keep its existing product declaration and history.
+    let original_cwd = Path::new(&actual_cwd).canonicalize()?;
     let info = herdr::call(&["agent", "get", pane])?;
     let agent = &info["result"]["agent"];
     ensure!(agent["agent"] == "codex", "source no longer contains Codex");
@@ -442,9 +444,9 @@ pub fn register_client(
         process_is_descendant(pid, owner.into())?,
         "native frontend no longer belongs to its launcher"
     );
-    let root = Project::discover(cwd)?
+    let root = Project::discover(&original_cwd)?
         .map(|p| p.root().to_owned())
-        .unwrap_or(cwd.to_owned());
+        .unwrap_or(original_cwd);
     let dir = directory(&root)?;
     let binding = Registration {
         schema: 3,
@@ -471,6 +473,17 @@ pub fn register_client(
         let launching_dir = directory(&launching_root)?;
         recovery::write(
             &launching_dir.join(format!("pane-{}.json", recovery::hash(pane.as_bytes()))),
+            &serde_json::to_vec(&binding)?,
+            true,
+        )?;
+    }
+    let current_root = Project::discover(cwd)?
+        .map(|p| p.root().to_owned())
+        .unwrap_or(cwd.canonicalize()?);
+    if current_root != binding.cwd && current_root != launching_root {
+        recovery::write(
+            &directory(&current_root)?
+                .join(format!("pane-{}.json", recovery::hash(pane.as_bytes()))),
             &serde_json::to_vec(&binding)?,
             true,
         )?;

@@ -11,7 +11,7 @@ not supervise agents or prove that reported work passed verification.
 
 ## Start from the current project
 
-Check `ap --version` and the relevant command's `--help`; these instructions cover 1.1.0
+Check `ap --version` and the relevant command's `--help`; these instructions cover 1.2.1
 and the 1.1.1 shared-server launcher / 1.2.0 optional zsh command setup.
 If the binary is missing, install it when installation is within the request, using
 [connection.md](references/connection.md). Do not change global agent settings.
@@ -25,8 +25,9 @@ Do not split an extra pane manually if an owned observer already exists.
 If connection is absent or fails, read [connection.md](references/connection.md). Resolve
 the local cause yourself when authorized. Ask only for a necessary user-owned trust or
 authentication action. Do not ask the user to paste IDs that local metadata can supply.
-Outside Herdr, use file mode, an explicitly selected rollout or plain text summaries;
-do not claim automatic pane placement is available.
+Outside Herdr, `ap launch --agent NAME` can create an automatic tmux progress window in an
+interactive terminal when tmux is installed. Exact per-launch identities are required;
+Claude/OpenCode still need their project hooks. File mode and explicit rollouts also work.
 
 ## Maintain the existing plan
 

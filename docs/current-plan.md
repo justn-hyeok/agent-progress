@@ -1,5 +1,32 @@
 # Current release plan
 
+## 1.2.1 release — 2026-09-29
+
+- [x] [AP-19/portable-package] Version and verify the exact 1.2.1 archive and installation.
+- [ ] [AP-19/portable-publish] Publish the matching source commit, tag, assets and Homebrew formula.
+- [ ] [AP-19/portable-installed] Verify published checksums, CI and the installed 1.2.1 binary.
+
+Exact 1.2.1 archive installation/removal and its public shell/compatibility/real-tmux
+fixture paths passed. Repacking was byte-identical. SHA-256:
+d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.
+
+## Portable connections — 2026-09-29
+
+- [x] [AP-06/shell-portable] Add bash/fish preview/install/status/remove without replacing user definitions or executables.
+- [x] [AP-06/terminal-portable] Automatically show the exact native session outside Herdr using optional tmux.
+- [x] [AP-09/compatibility] Detect version changes and check native connection/plan contracts, separating live and fixture evidence.
+- [x] [AP-19/portable-verification] Verify real shells/terminal lifecycle and update usage documentation.
+
+Scope: repository changes and isolated verification. Existing global zsh configuration
+and user panes are preserved. No additional OS packaging or Apple signing is included.
+Implementation is verified locally; 1.2.1 publication is in progress. Real zsh/bash/fish, tmux/PTY fixtures, native
+markdown producers and review fixes are recorded in verification/portable.md.
+Final local verification: 104 Rust tests, fmt/Clippy, release build, release-binary
+tmux/PTY and presentation scenarios passed. Native CLI/RPC checks passed on all three
+installed agents. Source skill metadata passed validation. Review findings on native
+exit status, slot cleanup, Bash login precedence and unobservable Codex flags were fixed
+and covered by regression scenarios. The release checklist above tracks public/installed state.
+
 ## Shell integration — 2026-09-29
 
 - [x] [AP-06/shell] Implement optional zsh install/status/remove with preservation and backup.

@@ -11,6 +11,8 @@ brew install justn-hyeok/agent-progress/agent-progress
 
 Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치한다.
 Rust, Node, Herdr는 설치 의존성이 아니다. macOS arm64 전용이다.
+Herdr 밖의 자동 진행 창에는 선택적으로 tmux가 필요하다(`brew install tmux`).
+셸 연결은 `ap shell install --shell zsh|bash|fish`로 설치하며 원본 실행 파일을 바꾸지 않는다.
 `brew update && brew upgrade agent-progress`로 업데이트하고
 `brew uninstall agent-progress`로 제거한다. `.agent-progress` 데이터는 보존한다.
 자동 에이전트 연결은 설치 후 프로젝트에서 별도로 `ap connect apply`로 설정한다.

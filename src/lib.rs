@@ -1,5 +1,6 @@
 pub mod bridge;
 pub mod codex_client;
+pub mod compatibility;
 pub mod connection;
 pub mod dashboard;
 pub mod doctor;
@@ -14,4 +15,5 @@ pub mod runner;
 pub mod settings;
 pub mod shell;
 pub mod store;
+pub mod terminal;
 pub mod ui;

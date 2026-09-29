@@ -29,12 +29,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Optional zsh integration for typing codex directly; backs up and preserves rc content.
+    /// Check native connection interfaces; --live also makes one authenticated plan-only request per agent.
+    Compatibility {
+        #[arg(long, value_parser=["codex","claude","opencode"])]
+        agent: Vec<String>,
+        #[arg(long)]
+        live: bool,
+        /// Explicit native model for one selected agent; uses that agent's existing authentication.
+        #[arg(long, requires = "live")]
+        model: Option<String>,
+    },
+    /// Optional shell integration for typing codex directly; backs up and preserves rc content.
     Shell {
         #[arg(value_parser=["preview","status","install","remove"],default_value="preview")]
         action: String,
         #[arg(long)]
         rc: Option<PathBuf>,
+        #[arg(long, value_parser=["zsh","bash","fish"], default_value="zsh")]
+        shell: String,
     },
     /// Project-local colors, placement and automatic Herdr observation.
     Config {
@@ -47,6 +59,18 @@ enum Command {
         agent: String,
         #[arg(last = true)]
         args: Vec<String>,
+    },
+    #[command(hide = true)]
+    TerminalSource {
+        #[arg(long)]
+        slot: PathBuf,
+    },
+    #[command(hide = true)]
+    TerminalFollow {
+        #[arg(long)]
+        slot: PathBuf,
+        #[arg(long)]
+        once: bool,
     },
     #[command(hide = true)]
     CodexClient {
@@ -317,13 +341,74 @@ fn run(cli: Cli) -> Result<()> {
         once: false,
     });
     let command = match command {
-        Command::Shell { action, rc } => {
+        Command::Compatibility { agent, live, model } => {
+            let agents = if agent.is_empty() {
+                vec!["codex".into(), "claude".into(), "opencode".into()]
+            } else {
+                agent
+            };
+            anyhow::ensure!(
+                model.is_none() || agents.len() == 1,
+                "--model requires one --agent"
+            );
+            let report =
+                agent_progress::compatibility::report_model(&agents, live, model.as_deref());
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(
+                report["passed"] == true,
+                "native compatibility check failed"
+            );
+            return Ok(());
+        }
+        Command::Shell { action, rc, shell } => {
+            if shell == "bash" && rc.is_none() {
+                let bashrc = agent_progress::shell::default_rc_for("bash")?;
+                let home = bashrc.parent().context("bash home unavailable")?.to_owned();
+                // Bash reads only the first existing login file. Never create a
+                // higher-priority file that would hide the user's existing startup.
+                let profile = [".bash_profile", ".bash_login", ".profile"]
+                    .iter()
+                    .map(|name| home.join(name))
+                    .find(|path| path.exists() || path.is_symlink())
+                    .unwrap_or_else(|| home.join(".profile"));
+                let mut paths = vec![bashrc, profile.clone()];
+                // A new user login file may have changed precedence after installation.
+                // Status/removal must still find our block in the old login file.
+                if matches!(action.as_str(), "status" | "remove") {
+                    for name in [".bash_profile", ".bash_login", ".profile"] {
+                        let path = home.join(name);
+                        if path != profile
+                            && agent_progress::shell::manage_for("status", &path, &shell)?["installed"]
+                                == true
+                        {
+                            paths.push(path);
+                        }
+                    }
+                }
+                // Preflight both files before making either change.
+                for path in &paths {
+                    agent_progress::shell::manage_for("status", path, &shell)?;
+                }
+                let results = paths
+                    .iter()
+                    .map(|path| agent_progress::shell::manage_for(&action, path, &shell))
+                    .collect::<Result<Vec<_>>>()?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &serde_json::json!({"shell":shell,"installed":results.iter().all(|r|r["installed"]==true),"files":results})
+                    )?
+                );
+                return Ok(());
+            }
             let rc = rc
                 .map(Ok)
-                .unwrap_or_else(agent_progress::shell::default_rc)?;
+                .unwrap_or_else(|| agent_progress::shell::default_rc_for(&shell))?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&agent_progress::shell::manage(&action, &rc)?)?
+                serde_json::to_string_pretty(&agent_progress::shell::manage_for(
+                    &action, &rc, &shell
+                )?)?
             );
             return Ok(());
         }
@@ -402,7 +487,19 @@ fn run(cli: Cli) -> Result<()> {
             return Ok(());
         }
         Command::Launch { agent, args } => {
+            use std::io::IsTerminal;
             use std::os::unix::process::CommandExt;
+            agent_progress::terminal::claim()?;
+            if agent_progress::terminal::interactive_args(&agent, &args)
+                && (std::env::var("HERDR_ENV").as_deref() == Ok("1")
+                    || std::env::var_os("AP_TERMINAL_SLOT").is_some()
+                    || std::io::stdin().is_terminal())
+            {
+                agent_progress::compatibility::on_launch(&agent);
+            }
+            if agent_progress::terminal::maybe_launch(&agent, &args)? {
+                return Ok(());
+            }
             if agent == "codex" {
                 return agent_progress::codex_client::launch(args);
             }
@@ -410,6 +507,10 @@ fn run(cli: Cli) -> Result<()> {
             command.env("AP_AUTO_OPEN", "1");
             command.args(args);
             return Err(command.exec().into());
+        }
+        Command::TerminalSource { slot } => return agent_progress::terminal::source(&slot),
+        Command::TerminalFollow { slot, once } => {
+            return agent_progress::terminal::follow(&slot, once);
         }
         Command::CodexClient {
             socket,
@@ -431,7 +532,14 @@ fn run(cli: Cli) -> Result<()> {
             let project = agent_progress::project::Project::discover(&source_root)?;
             let settings = agent_progress::settings::load(
                 project.as_ref().map(|p| p.root()).unwrap_or(&source_root),
-            )?;
+            )
+            .unwrap_or_else(|_| {
+                eprintln!("progress presentation unavailable: invalid settings; hook continues");
+                agent_progress::settings::Settings {
+                    auto_open: false,
+                    ..Default::default()
+                }
+            });
             if settings.auto_open
                 && std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0")
                 && registered["registered_pane"] == true

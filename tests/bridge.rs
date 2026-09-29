@@ -82,6 +82,36 @@ fn fixture(root: &std::path::Path) {
 }
 
 #[test]
+fn invalid_presentation_does_not_fail_a_native_plan_hook() {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+    let root = tempdir().unwrap();
+    fixture(root.path());
+    fs::create_dir(root.path().join(".agent-progress")).unwrap();
+    let settings = root.path().join(".agent-progress/ui.json");
+    fs::write(&settings, "{").unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["bridge", "--agent", "claude"])
+        .env("HERDR_ENV", "0")
+        .env_remove("AP_TERMINAL_SLOT")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(json!({"cwd":root.path(),"session_id":"invalid-theme","last_assistant_message":"### 진행 계획\n- [>] AP-01 Observe"}).to_string().as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()["continue"],
+        true
+    );
+    assert_eq!(fs::read_to_string(settings).unwrap(), "{");
+}
+
+#[test]
 fn client_selection_changes_invalidate_old_binding_even_while_its_transcript_exists() {
     let root = tempdir().unwrap();
     let dir = root.path().join(".agent-progress/bridges");

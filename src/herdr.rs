@@ -32,12 +32,30 @@ fn codex_agent() -> String {
 
 // Redirect to private temp files so a full pipe cannot hang the timeout loop.
 pub(crate) fn bounded(mut command: Command, cancel: Option<&AtomicBool>) -> Result<Vec<u8>> {
+    bounded_output(&mut command, cancel, false)
+}
+
+// Some native CLIs write help to stderr. Use only for explicit --help probes,
+// never for errors that can contain configuration or provider credentials.
+pub(crate) fn bounded_help(mut command: Command) -> Result<Vec<u8>> {
+    bounded_output(&mut command, None, true)
+}
+
+fn bounded_output(
+    command: &mut Command,
+    cancel: Option<&AtomicBool>,
+    help: bool,
+) -> Result<Vec<u8>> {
     ensure!(
         !cancel.is_some_and(|c| c.load(Ordering::Relaxed)),
         "cancelled"
     );
     let mut output = tempfile::tempfile()?;
-    let errors = tempfile::tempfile()?;
+    let errors = if help {
+        output.try_clone()?
+    } else {
+        tempfile::tempfile()?
+    };
     let mut child = command
         .stdin(Stdio::null())
         .stdout(output.try_clone()?)

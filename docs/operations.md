@@ -1,5 +1,34 @@
 # 세 에이전트 제품 사용과 복구
 
+## 1.2.1 bash·fish, 일반 터미널, 호환성 검사
+
+셸 설정에는 `--shell bash` 또는 `--shell fish`를 지정한다. bash 기본 설치는
+`.bashrc`와 기존 활성 로그인 파일에 같은 보호 블록을 설치하고 각각 백업한다.
+`.bash_profile` → `.bash_login` → `.profile` 순서를 보존하고, 없으면 `.profile`을 사용한다.
+새 파일로 이전 설정을 가리지 않으며, 설치 뒤 우선순위가 바뀌어도 원래 관리 블록을 찾아 제거한다.
+fish는 XDG_CONFIG_HOME/fish/config.fish를 사용한다. preview는 파일을 만들지 않는다.
+status/remove에도 같은 셸을 지정하며 `--rc PATH`는 파일 하나만 처리한다.
+기존 별칭·함수, 편집된 관리 블록, 원래 실행 파일은 보존한다.
+
+Herdr 밖의 대화형 `ap launch --agent NAME`은 선택적 tmux로 진행 창을 자동 생성한다.
+tmux가 없으면 설치 방법을 알리고 원래 명령을 실행한다. 기존 tmux에서는 별도
+작업 window를 사용하고, 없으면 전용 socket의 세션을 현재 터미널에 연결한다.
+에이전트 쪽 포커스와 초기 above/below 설정을 유지한다. 비대화형·관리 명령은
+창을 생성하지 않는다. AP_AUTO_OPEN=0 또는 auto_open:false로 끌 수 있다.
+Codex는 해당 frontend RPC 응답을 읽고 Claude/OpenCode는 연결된 프로젝트 훅의
+실제 부모 프로세스를 검사한다. 최신 로그 추측이나 다른 창의 식별자는 쓰지 않는다.
+원본 종료 후 viewer와 실행별 임시 정보가 정리되며 native 종료 코드를 보존한다.
+
+실행기는 버전 변경 시 로컬 CLI와 Codex RPC 스키마를 재검사한다.
+결과는 .agent-progress/compatibility/에 저장하고 실패하면 경고하되 native 실행을 유지한다.
+`ap compatibility`는 같은 검사를 JSON/종료 코드로 반환한다. `--agent NAME --live`는
+기존 인증으로 짧은 모델 응답을 검사하며 사용량이 발생한다. 필요하면 --model을 지정한다.
+실제 markdown 계획이 HUD의 1/2 상태로 전달되는지 검사한다. native TaskCreate/todos,
+전체 창 lifecycle, 다른 버전의 모든 기능은 별도 검증이다. 원시 provider 오류 로그는 출력하지 않는다.
+
+v1.2.0 사용자는 바이너리 업그레이드 후 `ap shell install --shell zsh`로 기존 블록을 갱신한다.
+기존 블록은 백업하고, 사용자가 편집한 블록은 자동 덮어쓰지 않는다.
+
 ## 1.2.0 일반 codex 명령 연결
 
 `ap shell preview`는 zsh 설정에 추가할 블록을 보여줍니다. `ap shell install`은

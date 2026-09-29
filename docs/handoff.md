@@ -1,5 +1,12 @@
 # Release handoff
 
+1.2.1 includes the portable follow-up: bash/fish
+managed shell setup, optional tmux automatic display outside Herdr, and compatibility CLI
+with automatic version-change interface checks and optional authenticated markdown producer
+smoke. Existing zsh users should rerun ap shell install after upgrading the binary to
+update the legacy managed block with a backup. README/operations/skill references describe
+the supported paths. See verification/portable.md for exact evidence.
+
 1.2.0 adds optional zsh command setup with preview/install/status/remove. After installation
 in a new shell, ordinary codex/resume enters the existing launcher inside Herdr; outside
 Herdr and for management/non-interactive commands native execution is preserved. The real

@@ -1492,7 +1492,7 @@ pub fn follow(options: Options) -> Result<()> {
     Ok(())
 }
 
-fn refresh_palette(root: &Path, view: &mut View) {
+pub(crate) fn refresh_palette(root: &Path, view: &mut View) {
     match crate::settings::load(root).and_then(|settings| {
         let palette = settings.palette(None)?;
         let states = crate::settings::BackgroundState::ALL

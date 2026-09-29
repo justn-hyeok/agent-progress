@@ -235,11 +235,10 @@ impl Exchanges {
     }
 }
 
-pub fn launch(args: Vec<String>) -> Result<()> {
-    let mut args = args;
-    let mut native = Command::new("codex");
-    native.env("AP_AUTO_OPEN", "1");
-    if std::env::var("HERDR_ENV").as_deref() != Ok("1")
+/// Native override/embedded/remote modes retain their own transport. Do not create
+/// a viewer that cannot receive an exact frontend session in those modes.
+pub fn can_observe(args: &[String]) -> bool {
+    if !crate::terminal::interactive_args("codex", args)
         || args.iter().any(|a| {
             matches!(
                 a.as_str(),
@@ -255,8 +254,32 @@ pub fn launch(args: Vec<String>) -> Result<()> {
                     | "--search"
                     | "--dangerously-bypass-hook-trust"
             ) || a.starts_with("--config=")
+                || a.starts_with("--enable=")
+                || a.starts_with("--disable=")
                 || (a.starts_with("-c") && a.len() > 2)
         })
+    {
+        return false;
+    }
+    if let Some(index) = args
+        .iter()
+        .position(|a| a == "--remote" || a.starts_with("--remote="))
+    {
+        return args[index]
+            .strip_prefix("--remote=")
+            .or_else(|| args.get(index + 1).map(String::as_str))
+            .is_some_and(|remote| remote.starts_with("unix://") && remote.len() > 7);
+    }
+    true
+}
+
+pub fn launch(args: Vec<String>) -> Result<()> {
+    let mut args = args;
+    let mut native = Command::new("codex");
+    native.env("AP_AUTO_OPEN", "1");
+    let portable = crate::terminal::slot();
+    if (std::env::var("HERDR_ENV").as_deref() != Ok("1") && portable.is_none())
+        || !can_observe(&args)
     {
         native.args(args);
         return Err(native.exec().into());
@@ -297,15 +320,27 @@ pub fn launch(args: Vec<String>) -> Result<()> {
             args.remove(index);
         }
     }
-    let pane = std::env::var("HERDR_PANE_ID").context("source pane unavailable")?;
+    let pane = if portable.is_some() {
+        String::new()
+    } else {
+        std::env::var("HERDR_PANE_ID").context("source pane unavailable")?
+    };
     let owner = std::process::id();
-    let source = crate::herdr::call(&["pane", "process-info", "--pane", &pane])?;
-    ensure!(
-        source["result"]["process_info"]["foreground_processes"]
-            .as_array()
-            .is_some_and(|ps| ps.iter().any(|p| p["pid"].as_u64() == Some(owner.into()))),
-        "launcher is not running in the claimed source pane"
-    );
+    if let Some(slot) = &portable {
+        crate::terminal::validate_slot(slot)?;
+        ensure!(
+            std::fs::read_to_string(slot.join("owner"))? == owner.to_string(),
+            "terminal owner mismatch"
+        );
+    } else {
+        let source = crate::herdr::call(&["pane", "process-info", "--pane", &pane])?;
+        ensure!(
+            source["result"]["process_info"]["foreground_processes"]
+                .as_array()
+                .is_some_and(|ps| ps.iter().any(|p| p["pid"].as_u64() == Some(owner.into()))),
+            "launcher is not running in the claimed source pane"
+        );
+    }
     let initial = std::env::current_dir()?.canonicalize()?;
     let mut root = initial.clone();
     for i in 0..args.len() {
@@ -429,6 +464,18 @@ fn bind(
         let path = path.context("native transcript creation pending")?;
         let selected: serde_json::Value = serde_json::from_slice(&crate::recovery::read(marker)?)?;
         if selected["session"] != thread.id.to_string() {
+            return Ok(());
+        }
+        if let Some(slot) = crate::terminal::slot() {
+            crate::terminal::publish(
+                &slot,
+                crate::terminal::Selection {
+                    session: thread.id,
+                    rollout: path,
+                    cwd,
+                    owner,
+                },
+            )?;
             return Ok(());
         }
         crate::bridge::register_client(pane, owner, thread.id, &path, &cwd, root, marker)

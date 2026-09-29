@@ -294,6 +294,19 @@ fn register(
     dir: &Path,
 ) -> Result<Value> {
     let mut result = json!({"agent":agent,"session":session,"native_session":native,"rollout":rollout,"registered_pane":false});
+    if let Some(slot) = crate::terminal::slot() {
+        let owner: u32 = String::from_utf8(recovery::read(&slot.join("owner"))?)?.parse()?;
+        crate::terminal::publish(
+            &slot,
+            crate::terminal::Selection {
+                session,
+                rollout: rollout.into(),
+                cwd: root.into(),
+                owner,
+            },
+        )?;
+        return Ok(result);
+    }
     if std::env::var("HERDR_ENV").as_deref() != Ok("1") {
         return Ok(result);
     }
@@ -383,7 +396,7 @@ fn sender_is_descendant(expected: u64) -> Result<bool> {
     process_is_descendant(std::process::id().into(), expected)
 }
 
-fn process_is_descendant(mut current: u64, expected: u64) -> Result<bool> {
+pub(crate) fn process_is_descendant(mut current: u64, expected: u64) -> Result<bool> {
     for _ in 0..12 {
         if current == expected {
             return Ok(true);

@@ -29,23 +29,37 @@ brew uninstall agent-progress
 
 ## 에이전트 연결
 
-zsh에서 평소처럼 `codex`를 입력해 자동 연결하려면 한 번 설치합니다.
+v1.2.1은 bash·fish, Herdr 밖 자동 창, 버전 변경 시 호환성 검사를 지원합니다.
+v1.2.0에서 업그레이드했다면 `ap shell install`을 다시 실행해 기존 관리 블록을 갱신합니다.
+
+zsh·bash·fish에서 평소처럼 `codex`를 입력해 자동 연결하려면 사용하는 셸에 한 번 설치합니다.
 
 ```sh
 ap shell install
+ap shell install --shell bash
+ap shell install --shell fish
 ```
 
 새 터미널에서 `codex` 또는 `codex resume`를 사용하면 됩니다. Herdr 안에서는
-연결 관찰기를 거쳐 원래 Codex를 실행하고, 밖에서는 원래 명령으로 실행합니다.
+연결 관찰기를 거쳐 원래 Codex를 실행합니다. Herdr 밖의 대화형 터미널에서는
+tmux로 에이전트와 진행 창을 자동 표시합니다. 이 경로에는 `brew install tmux`가
+필요합니다. 기존 tmux 안에서는 별도 작업 window를 열어 다른 창의 배치를 보존합니다.
 `codex exec`, `login`, `mcp` 같은 비대화형·관리 명령도 원래 Codex로 직접 전달합니다.
 `ap shell status`로 설정을 확인하고 `ap shell remove`로 제거합니다. 기존 rc 파일은
 백업하며 사용자 편집과 원래 실행 파일은 보존합니다. 기존 `codex` 별칭·함수는
 덮어쓰지 않습니다. 앱 제거 전 이 설정도 제거하세요.
 
-셸을 거치지 않는 직접 프로그램 호출은 이 함수의 대상이 아닙니다. 원래 실행이
-필요할 때는 `command codex`를 사용합니다. zsh 외 셸의 설치는 아직 지원하지 않습니다.
+`status`·`remove`에도 설치할 때와 같은 `--shell`을 사용합니다. bash는 기본적으로
+`.bashrc`와 기존 로그인 파일(`.bash_profile`, `.bash_login`, `.profile` 중 우선하는 파일)을
+처리해 일반·로그인 셸을 지원합니다. 로그인 파일이 없으면 `.profile`을 사용합니다. fish는
+`$XDG_CONFIG_HOME/fish/config.fish`(기본 `~/.config/fish/config.fish`)를 처리합니다.
+`--rc PATH`를 지정하면 그 파일 하나만 처리합니다.
 
-Herdr 안에서 작업할 프로젝트로 이동한 뒤, 사용할 에이전트를 연결합니다. Codex의 경우:
+셸을 거치지 않는 직접 프로그램 호출은 이 함수의 대상이 아닙니다. 원래 실행이
+필요할 때는 `command codex`를 사용합니다. 비대화형 실행과 tmux가 없는 환경은
+원래 에이전트로 전달합니다. `AP_AUTO_OPEN=0`으로 자동 창 생성을 끌 수 있습니다.
+
+작업할 프로젝트로 이동한 뒤, 사용할 에이전트를 연결합니다. Codex의 경우:
 
 ```sh
 ap connect preview --agent codex
@@ -55,7 +69,10 @@ ap launch --agent codex
 
 `preview`는 적용 내용을 보여주고, `apply`는 프로젝트의 연결 설정을 백업한 뒤 추가합니다. `launch`는 설치된 Codex를 실행하고, 그 창의 실제 세션 시작·복귀 응답을 읽어 진행 창을 연결합니다. 기존 공유 서버를 끄거나 세션 ID를 입력할 필요가 없습니다. 프로젝트 신뢰나 훅 승인이 요구되면 해당 에이전트에서 확인하세요.
 
-연결된 훅이 원본 세션을 확인하면 진행 창을 자동으로 엽니다. 에이전트는 기존 계획 도구를 그대로 사용합니다. 원본이 확정된 에이전트 창에서 `ap open`으로 직접 열 수도 있습니다.
+Herdr에서는 연결된 훅이 원본 세션을 확인하면 진행 창을 자동으로 엽니다. Herdr 밖에서는
+`ap launch --agent NAME`이 진행 창을 먼저 열고, 해당 실행의 실제 계획을 기다립니다.
+Claude·OpenCode에는 프로젝트 연결 훅이 필요합니다. 에이전트는 기존 계획 도구를
+그대로 사용합니다. Herdr에서는 `ap open`으로 직접 열 수도 있습니다.
 
 | 에이전트 | 연결 명령 | 읽는 계획 |
 | --- | --- | --- |
@@ -140,7 +157,21 @@ Herdr 밖에서도 파일 모드, 명시한 Codex 세션 기록 읽기, 테마 �
 
 ## 지원과 검증
 
-릴리즈 검증 환경은 macOS 26.6.2 arm64, Herdr 0.9.0, Codex CLI 0.157.1와 공유 서버 0.158.0, Claude Code 2.1.274, OpenCode 1.18.30입니다. 다른 OS·아키텍처와 에이전트 버전의 호환성은 별도로 확인해야 합니다. Codex 자동 연결은 `ap launch --agent codex`와 그 경로로 전달하는 zsh 연결 함수를 사용합니다.
+릴리즈 검증 환경은 macOS 26.6.2 arm64, Herdr 0.9.0, Codex CLI 0.157.1와 공유 서버 0.158.0, Claude Code 2.1.274, OpenCode 1.18.30입니다. 다른 OS·아키텍처와 에이전트 버전의 호환성은 별도로 확인해야 합니다. Codex 자동 연결은 `ap launch --agent codex`와 그 경로로 전달하는 셸 연결 함수를 사용합니다.
+
+실행기는 버전이 바뀌면 연결 인터페이스를 자동 재검사하고 문제를 경고합니다.
+Codex는 실제 생성한 RPC 스키마도 검사합니다. 결과는 프로젝트의
+`.agent-progress/compatibility/`에 저장하며, 실패해도 원래 에이전트 실행은 유지합니다.
+
+```sh
+ap compatibility                         # 로컬 CLI/RPC 검사, 모델 호출 없음
+ap compatibility --agent codex --live    # 인증된 짧은 계획 응답 검사
+ap compatibility --agent opencode --live --model opencode-go/glm-5.3-flash
+```
+
+`--live`는 임시 디렉터리에서 짧은 모델 요청을 하므로 기존 인증과 사용량이 필요합니다.
+계획 응답이 HUD에서 1/2로 해석되는지 검사하며, 모든 native task 도구나 창 배치의
+호환성을 대신 인증하지 않습니다. 실패는 종료 코드와 JSON으로 반환합니다.
 
 Apple Developer 서명·공증은 없습니다. 로컬 세션 원문, 인증 파일과 사용자 화면 캡처는 공개 저장소에 포함하지 않습니다.
 

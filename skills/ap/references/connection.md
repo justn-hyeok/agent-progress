@@ -21,7 +21,12 @@ With ap 1.2.0, `ap shell install` optionally adds a managed zsh function so typi
 preserves unrelated content and existing definitions, and offers `ap shell remove`.
 This is user-level shell setup: apply only when the request authorizes that installation.
 It does not replace native binaries or bypass harness trust. Management/non-interactive
-commands and non-Herdr shells use native Codex; `command codex` is the direct escape.
+commands use native Codex; `command codex` is the direct escape.
+ap 1.2.1 also supports `--shell bash` and `--shell fish`. Default bash installation
+covers .bashrc and the existing active login file without hiding .bash_login/.profile;
+fish uses XDG_CONFIG_HOME/fish/config.fish. The same --shell
+must be used for status/removal. Legacy zsh managed blocks upgrade with exact backups.
+After upgrading from 1.2.0 rerun ap shell install for the selected shell to update its block.
 
 Select the actual native harness (`codex`, `claude` or `opencode`). From the requested
 project, inspect `ap connect preview --agent NAME`. If a connection is needed and the
@@ -64,4 +69,15 @@ configuration overrides. Do not restart an active user session or change global 
 
 No Herdr: `ap follow --rollout /explicit/session.jsonl --once` reads a selected Codex source;
 `ap product summary` gives saved product text. File CLI, configuration and local stdio MCP
-also work without Herdr. Neither path creates a pane automatically.
+also work without Herdr. With the portable launcher, interactive `ap launch --agent NAME`
+opens a tmux source/progress window automatically. Install tmux only when that setup is
+authorized. Each launch has a private slot and exact session identity; never select recent logs.
+Codex retains its shared server; Claude/OpenCode need their project-local hooks. Existing tmux
+windows and non-interactive commands are preserved. Native trust/authentication still apply.
+
+`ap compatibility` checks local CLI/RPC interfaces without a model call. Launches repeat this
+check on version change and retain the result in project-local compatibility metadata. Use
+`--agent NAME --live` only when native producer testing is authorized: it makes a short model
+request in disposable storage using existing authentication. `--model` can select a model for
+one agent. A successful markdown producer check does not certify native TaskCreate/todos or
+the complete pane lifecycle. Never print raw provider error logs or credentials.

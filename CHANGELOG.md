@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1 — 2026-09-29
+
+- bash/fish shell integration with exact backups, managed block protection and narrow removal.
+  Default bash setup preserves login-file precedence and covers non-login rc files;
+  legacy zsh blocks can be upgraded.
+- Optional tmux automatic progress outside Herdr. Private launch identities, Codex frontend RPC
+  selection and native hook ancestry prevent mixing concurrent sessions. Keep native focus,
+  support initial above/below placement, and retain native exit status.
+- Automatic local compatibility checks when agent versions change, including Codex RPC schemas.
+  `ap compatibility --live` additionally tests authenticated plan response parsing; native task
+  tools and complete pane lifecycle remain separate evidence. Failures never block native launch.
+- Upgrade existing command setup with `ap shell install --shell zsh` (or the selected
+  shell) after installing the new binary; the legacy block is backed up before replacement.
+
 ## 1.2.0 — 2026-09-29
 
 - Opt-in zsh setup with `ap shell preview/install/status/remove` so ordinary interactive

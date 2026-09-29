@@ -1,7 +1,7 @@
 # Portable follow-up — 2026-09-29
 
 Target: feat/portable-progress in /Users/justn/dev/agent-progress-portable.
-This is local implementation evidence, not a new public release or human acceptance.
+Implementation evidence below remains separate from publication and human acceptance.
 
 - Real zsh, macOS bash and fish 4.9.3: exact argument preservation (quotes, spaces,
   empty arguments and newlines), native escape, existing definitions, backups,
@@ -41,6 +41,15 @@ fixtures. Uninstall retained unrelated files and plan data. Repacking was byte-i
 Archive SHA-256: d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.
 Authenticated markdown producer checks above used the portable development build
 before the 1.2.1 version bump; the archive check is separately labeled here.
+
+Publication: v1.2.1 targets 8e0b86ee1c9c4baeecec7e25eb7e5c965ddde99c; Rust CI passed
+at https://github.com/justn-hyeok/agent-progress/actions/runs/36550680133.
+The downloaded public archive matched the hash above. Homebrew formula commit
+6005867344044e16d3f5bbfdc9e046900ff69743 passed install CI at
+https://github.com/justn-hyeok/agent-progress/actions/runs/36551086038.
+Local brew upgrade/test/audit and installed CLI/RPC checks passed. The installed binary
+matched the packaged release build. Managed zsh and installed ap skill updates preserved
+unrelated content and backups; neither active user panes nor native credentials were changed.
 
 No Apple signing/notarization or other OS certification is included. tmux is optional
 and needed only for automatic display outside Herdr. Native project trust is preserved.

@@ -1,5 +1,12 @@
 # Release handoff
 
+1.2.1 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.1.
+Tag/source is 8e0b86ee1c9c4baeecec7e25eb7e5c965ddde99c; source Rust CI passed.
+Archive SHA-256 is d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.
+The matching Homebrew formula and install CI passed at 6005867344044e16d3f5bbfdc9e046900ff69743.
+Published assets and the local Homebrew installation were verified. Existing local zsh
+setup and installed ap skill were backed up/upgraded; active user shells/panes were preserved.
+
 1.2.1 includes the portable follow-up: bash/fish
 managed shell setup, optional tmux automatic display outside Herdr, and compatibility CLI
 with automatic version-change interface checks and optional authenticated markdown producer

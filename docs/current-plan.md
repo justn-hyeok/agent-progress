@@ -3,12 +3,20 @@
 ## 1.2.1 release — 2026-09-29
 
 - [x] [AP-19/portable-package] Version and verify the exact 1.2.1 archive and installation.
-- [ ] [AP-19/portable-publish] Publish the matching source commit, tag, assets and Homebrew formula.
-- [ ] [AP-19/portable-installed] Verify published checksums, CI and the installed 1.2.1 binary.
+- [x] [AP-19/portable-publish] Publish the matching source commit, tag, assets and Homebrew formula.
+- [x] [AP-19/portable-installed] Verify published checksums, CI and the installed 1.2.1 binary.
 
 Exact 1.2.1 archive installation/removal and its public shell/compatibility/real-tmux
 fixture paths passed. Repacking was byte-identical. SHA-256:
 d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.
+Release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.1.
+Tag/source: 8e0b86ee1c9c4baeecec7e25eb7e5c965ddde99c (Rust CI passed).
+Homebrew formula: 6005867344044e16d3f5bbfdc9e046900ff69743 (install CI passed).
+Published download matched the local archive hash. Homebrew upgraded this Mac to 1.2.1;
+brew test/audit and installed CLI/RPC checks passed. The installed binary matched the
+release binary. Existing managed zsh setup was backed up/upgraded, and installed ap
+skill updates passed validation after checking against the prior source baseline.
+Active shells need a new shell or explicit rc reload; running user panes were retained.
 
 ## Portable connections — 2026-09-29
 
@@ -19,7 +27,7 @@ d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.
 
 Scope: repository changes and isolated verification. Existing global zsh configuration
 and user panes are preserved. No additional OS packaging or Apple signing is included.
-Implementation is verified locally; 1.2.1 publication is in progress. Real zsh/bash/fish, tmux/PTY fixtures, native
+Implementation is released as 1.2.1. Real zsh/bash/fish, tmux/PTY fixtures, native
 markdown producers and review fixes are recorded in verification/portable.md.
 Final local verification: 104 Rust tests, fmt/Clippy, release build, release-binary
 tmux/PTY and presentation scenarios passed. Native CLI/RPC checks passed on all three

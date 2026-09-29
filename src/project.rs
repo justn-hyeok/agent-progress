@@ -290,7 +290,7 @@ impl Project {
         let cwd = cwd.canonicalize()?;
         for dir in cwd.ancestors() {
             let path = dir.join("ap.project.json");
-            if path.exists() {
+            if path.exists() || path.is_symlink() {
                 return Self::open(&path).map(Some);
             }
         }
@@ -343,6 +343,23 @@ impl Project {
     }
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    /// Check declaration/roadmap paths without generating or changing cached progress.
+    pub fn validate_declaration(&self) -> Result<()> {
+        let (_, document) = self.config()?;
+        let text = String::from_utf8(read_limited(&document)?)?;
+        roadmap(&text)?;
+        Ok(())
+    }
+    /// Read-only diagnostic view; an older objective cannot pass as the current product.
+    pub fn diagnostic_plan(&self) -> Result<Plan> {
+        let (manifest, _) = self.config()?;
+        let state = self.validated_state(&crate::recovery::read(&self.state_path())?)?;
+        ensure!(
+            state.plan.goal == manifest.objective,
+            "cached objective differs; explicit migration required"
+        );
+        Ok(state.plan)
     }
 
     pub fn state_path(&self) -> PathBuf {

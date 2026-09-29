@@ -11,8 +11,8 @@ not supervise agents or prove that reported work passed verification.
 
 ## Start from the current project
 
-Check `ap --version` and the relevant command's `--help`; these instructions cover 1.2.1
-and the 1.1.1 shared-server launcher / 1.2.0 optional zsh command setup.
+Check `ap --version` and the relevant command's `--help`; this skill targets 1.2.2.
+Check actual preview/doctor fields before assuming an older binary has these contracts.
 If the binary is missing, install it when installation is within the request, using
 [connection.md](references/connection.md). Do not change global agent settings.
 
@@ -28,6 +28,18 @@ authentication action. Do not ask the user to paste IDs that local metadata can 
 Outside Herdr, `ap launch --agent NAME` can create an automatic tmux progress window in an
 interactive terminal when tmux is installed. Exact per-launch identities are required;
 Claude/OpenCode still need their project hooks. File mode and explicit rollouts also work.
+
+For setup, use `ap connect preview --agent NAME` as the decision point. When it exposes
+`connection_status`, apply only an `unmanaged` connection within the authorized setup;
+retain `managed` settings and inspect a `conflict` without remove/reapply loops. A product
+manifest is optional for passive observation; its presence adds the declared product mapping.
+`AP_AUTO_OPEN=0` keeps automatic opening disabled through the native launcher and hooks.
+
+For diagnosis use `ap doctor` with the known agent/source. Add `--strict` only when an
+unhealthy requested check must produce a failing exit code. `--shell NAME --rc PATH`
+checks explicitly selected setup; `ap shell status` distinguishes known legacy setup
+(`outdated`, upgrade_required) from user-edited `conflict`. Upgrade only the former within
+authorized setup. Diagnosis never applies repairs or picks another session automatically.
 
 ## Maintain the existing plan
 

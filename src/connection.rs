@@ -50,15 +50,27 @@ fn executable_path() -> Result<std::path::PathBuf> {
 
 pub fn manage(root: &Path, action: &str, writes: bool) -> Result<Value> {
     let root = root.canonicalize()?;
+    let manifest = root.join("ap.project.json");
+    let product = if manifest.exists() || manifest.is_symlink() {
+        let project = crate::project::Project::open(&manifest)?;
+        ensure!(
+            project.root() == root,
+            "project declaration resolves outside connection root"
+        );
+        Some(project)
+    } else {
+        None
+    };
     ensure!(
-        root.join("ap.project.json").is_file(),
-        "project declaration required"
+        !writes || product.is_some(),
+        "--allow-writes requires an existing ap.project.json; passive hooks do not expose product write tools"
     );
-    crate::project::Project::open(&root.join("ap.project.json"))?;
-    ensure!(
-        !root.join(".codex").is_symlink() && !root.join(".agent-progress").is_symlink(),
-        "refusing symlink project settings directory"
-    );
+    if action != "preview" {
+        ensure!(
+            !root.join(".codex").is_symlink() && !root.join(".agent-progress").is_symlink(),
+            "refusing symlink project settings directory"
+        );
+    }
     let directory = root.join(".agent-progress");
     if action != "preview" {
         fs::create_dir_all(&directory)?;
@@ -84,15 +96,29 @@ pub fn manage(root: &Path, action: &str, writes: bool) -> Result<Value> {
     for event in ["SessionStart", "UserPromptSubmit", "Stop"] {
         hooks.push_str(&format!("\n[[hooks.{event}]]\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\ntimeout = 10\n", serde_json::to_string(&hook_command)?));
     }
+    let configuration = if product.is_some() {
+        format!(
+            "[mcp_servers.agent_progress]\ncommand = {command}\nargs = {}\n{hooks}",
+            serde_json::to_string(&arguments)?
+        )
+    } else {
+        hooks
+    };
     let snippets=[
-        (".codex/config.toml",format!("[mcp_servers.agent_progress]\ncommand = {command}\nargs = {}\n{hooks}",serde_json::to_string(&arguments)?)),
-        ("AGENTS.md","Use the existing goal/plan without asking users to register tasks. Link plan items to the stable IDs in ap.project.json's roadmap. A child suffix such as [AP-05/native] does not certify the whole AP-05 item. Distinguish reported, automated and human evidence. agent-progress observes; it never supervises or runs your work.\n".into()),
+        (".codex/config.toml", configuration),
+        ("AGENTS.md","Use the existing goal/plan without asking users to register tasks. If ap.project.json exists, link plan items to its stable roadmap IDs; do not create a manifest just to display progress. A child suffix such as [AP-05/native] does not certify the whole AP-05 item. Distinguish reported, automated and human evidence. agent-progress observes; it never supervises or runs your work.\n".into()),
     ];
     if action == "preview" {
-        return Ok(
-            json!({"scope":"project-local only","writes_enabled":writes,"files":snippets.iter().map(|(path,snippet)|json!({"path":root.join(path),"managed_addition":snippet})).collect::<Vec<_>>(),"mutates":false}),
-        );
+        let mut output = json!({"scope":"project-local only","writes_enabled":writes,"product_connected":product.is_some(),"files":snippets.iter().map(|(path,snippet)|json!({"path":root.join(path),"managed_addition":snippet})).collect::<Vec<_>>(),"mutates":false});
+        if let Some(state) = crate::connection_status::inspect(&root, "codex", None).as_object() {
+            output.as_object_mut().unwrap().extend(state.clone());
+        }
+        return Ok(output);
     }
+    ensure!(
+        !directory.join("connection.ap-lock").is_symlink(),
+        "refusing symlink connection lock"
+    );
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -225,9 +251,18 @@ pub fn manage_agent(root: &Path, action: &str, writes: bool, agent: &str) -> Res
     }
     ensure!(matches!(agent, "claude" | "opencode"), "unsupported agent");
     let root = root.canonicalize()?;
-    crate::project::Project::open(&root.join("ap.project.json"))?;
+    let manifest = root.join("ap.project.json");
+    if manifest.exists() || manifest.is_symlink() {
+        let project = crate::project::Project::open(&manifest)?;
+        ensure!(
+            project.root() == root,
+            "project declaration resolves outside connection root"
+        );
+    }
     let directory = root.join(".agent-progress");
-    ensure!(!directory.is_symlink(), "refusing symlink storage");
+    if action != "preview" {
+        ensure!(!directory.is_symlink(), "refusing symlink storage");
+    }
     let executable = executable_path()?;
     let command = format!(
         "{} bridge --agent {} --root {}",
@@ -242,7 +277,9 @@ pub fn manage_agent(root: &Path, action: &str, writes: bool, agent: &str) -> Res
     };
     let path = root.join(relative);
     for parent in path.ancestors().take_while(|p| *p != root) {
-        ensure!(!parent.is_symlink(), "refusing symlink settings path");
+        if action != "preview" {
+            ensure!(!parent.is_symlink(), "refusing symlink settings path");
+        }
     }
     let receipt_path = directory.join(format!("connection-{agent}.json"));
     let events = ["SessionStart", "PostToolUse", "Stop"];
@@ -280,9 +317,13 @@ export const AgentProgress = async ({{ directory }}) => {{
         root = serde_json::to_string(root.to_str().context("root encoding")?)?
     );
     if action == "preview" {
-        return Ok(
-            json!({"agent":agent,"mutates":false,"path":path,"command":command,"events":events,"plugin":if agent=="opencode" {Some(plugin.as_str())} else {None}}),
-        );
+        let mut output = json!({"agent":agent,"mutates":false,"path":path,"command":command,"events":events,"plugin":if agent=="opencode" {Some(plugin.as_str())} else {None}});
+        if let Some(state) =
+            crate::connection_status::inspect(&root, agent, Some(&hook)).as_object()
+        {
+            output.as_object_mut().unwrap().extend(state.clone());
+        }
+        return Ok(output);
     }
     fs::create_dir_all(&directory)?;
     let lock_path = directory.join(format!("connection-{agent}.lock"));

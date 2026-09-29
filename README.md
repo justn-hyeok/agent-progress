@@ -29,7 +29,8 @@ brew uninstall agent-progress
 
 ## 에이전트 연결
 
-v1.2.1은 bash·fish, Herdr 밖 자동 창, 버전 변경 시 호환성 검사를 지원합니다.
+v1.2.2는 일반 프로젝트 연결과 확장된 진단을 지원합니다. v1.2.1부터
+bash·fish, Herdr 밖 자동 창, 버전 변경 시 호환성 검사를 지원합니다.
 v1.2.0에서 업그레이드했다면 `ap shell install`을 다시 실행해 기존 관리 블록을 갱신합니다.
 
 zsh·bash·fish에서 평소처럼 `codex`를 입력해 자동 연결하려면 사용하는 셸에 한 번 설치합니다.
@@ -45,7 +46,8 @@ ap shell install --shell fish
 tmux로 에이전트와 진행 창을 자동 표시합니다. 이 경로에는 `brew install tmux`가
 필요합니다. 기존 tmux 안에서는 별도 작업 window를 열어 다른 창의 배치를 보존합니다.
 `codex exec`, `login`, `mcp` 같은 비대화형·관리 명령도 원래 Codex로 직접 전달합니다.
-`ap shell status`로 설정을 확인하고 `ap shell remove`로 제거합니다. 기존 rc 파일은
+`ap shell status`로 최신 상태·업그레이드 필요·없음·부분 설정·충돌을 확인하고,
+`ap shell remove`로 제거합니다. 알려진 구형 블록만 업그레이드 대상으로 표시합니다. 기존 rc 파일은
 백업하며 사용자 편집과 원래 실행 파일은 보존합니다. 기존 `codex` 별칭·함수는
 덮어쓰지 않습니다. 앱 제거 전 이 설정도 제거하세요.
 
@@ -68,6 +70,12 @@ ap launch --agent codex
 ```
 
 `preview`는 적용 내용을 보여주고, `apply`는 프로젝트의 연결 설정을 백업한 뒤 추가합니다. `launch`는 설치된 Codex를 실행하고, 그 창의 실제 세션 시작·복귀 응답을 읽어 진행 창을 연결합니다. 기존 공유 서버를 끄거나 세션 ID를 입력할 필요가 없습니다. 프로젝트 신뢰나 훅 승인이 요구되면 해당 에이전트에서 확인하세요.
+
+일반 프로젝트에서 `ap.project.json` 없이 연결할 수 있습니다.
+기존 manifest가 있으면 제품 계획·Codex product MCP를 유지하고, 잘못된 선언은 오류로
+표시합니다. `preview`에 추가된 `connection_status`는 `unmanaged`·`managed`·`conflict`이며,
+`next_action`은 각각 `apply`·`none`·`inspect`입니다. 이미 관리 중인 설정은 유지하고,
+충돌은 사용자 편집을 보존한 채 점검합니다.
 
 Herdr에서는 연결된 훅이 원본 세션을 확인하면 진행 창을 자동으로 엽니다. Herdr 밖에서는
 `ap launch --agent NAME`이 진행 창을 먼저 열고, 해당 실행의 실제 계획을 기다립니다.
@@ -152,6 +160,13 @@ ap product resume
 ```
 
 이미 확인된 원본 pane의 연결 상태는 `ap doctor --pane SOURCE`로 진단합니다. 복구 명령과 충돌·백업 처리 방법은 [운영 문서](docs/operations.md)에 있습니다. 최신 로그나 현재 포커스만으로 다른 세션을 임의 선택하지 않습니다.
+
+`ap doctor --agent codex`는 설치된 CLI, 현재 프로젝트 연결·제품 선언,
+셸 설정과 터미널 백엔드를 읽기 전용으로 점검합니다. `healthy`는 진단 결과이며
+기본 명령의 종료 코드는 계속 0입니다. 자동 검사에서 셸 설정이 없는 상태는
+제품 결함으로 계산하지 않습니다. 자동화에서 선택한 검사가 문제면 실패하도록
+하려면 `ap doctor --agent codex --strict`를 사용합니다. 셸만 정확히 확인할 때는
+`ap doctor --shell zsh --rc PATH --strict`를 사용합니다. 모델 요청·설정 복구는 하지 않습니다.
 
 Herdr 밖에서도 파일 모드, 명시한 Codex 세션 기록 읽기, 테마 설정과 MCP를 사용할 수 있습니다. 자세한 명령은 `ap --help`와 각 하위 명령의 `--help`에서 확인하세요.
 

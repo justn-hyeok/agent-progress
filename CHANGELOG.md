@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.2 — 2026-09-30
+
+- Allow passive Codex/Claude/OpenCode project hooks without creating ap.project.json;
+  existing product declarations retain their mapping and Codex product MCP integration.
+- Preserve an explicit AP_AUTO_OPEN=0 through all native launchers.
+- Add read-only connection ownership state and safe next actions to connect preview,
+  retaining prior JSON fields, user edits and protected apply/remove behavior.
+- Align the ap skill with preview-based setup decisions; invalid, broken or foreign
+  manifest links are not silently treated as absent declarations.
+- Extend doctor with connection ownership, shell upgrade state, optional tmux availability
+  and exact terminal-slot identity checks. Default reporting keeps exit 0; --strict returns
+  nonzero when requested checks are unhealthy, without repairing user configuration.
+- Shell status reports current/outdated/absent/partial/conflict and upgrade_required.
+  Known legacy blocks can upgrade; edited blocks stay protected. Default bash selection
+  handles prior owned login files as well as current login-file precedence.
+- Retry short-lived shell file lock contention within a bounded timeout, preserving
+  concurrent edits and exact backups.
+
 ## 1.2.1 — 2026-09-29
 
 - bash/fish shell integration with exact backups, managed block protection and narrow removal.

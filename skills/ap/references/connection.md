@@ -29,9 +29,28 @@ must be used for status/removal. Legacy zsh managed blocks upgrade with exact ba
 After upgrading from 1.2.0 rerun ap shell install for the selected shell to update its block.
 
 Select the actual native harness (`codex`, `claude` or `opencode`). From the requested
-project, inspect `ap connect preview --agent NAME`. If a connection is needed and the
-request authorizes setup, run `ap connect apply --agent NAME`. Already managed settings
-should be retained; conflicting user settings are not overwritten. Removal is
+project, inspect `ap connect preview --agent NAME`. ap 1.2.2 adds these fields
+without removing the prior preview payload:
+
+| connection_status | next_action | Decision |
+|---|---|---|
+| unmanaged | apply | Apply only when project-local setup is authorized. |
+| managed | none | Retain the existing connection; repeated apply is unnecessary. |
+| conflict | inspect | Inspect the static diagnostic and local ownership evidence; preserve edits. |
+
+Preview is read-only and does not disclose settings contents. Unrelated user settings
+can coexist with a managed connection; edited/missing/duplicate managed blocks or hooks,
+an invalid receipt, an unowned plugin, or unsafe paths need inspection. Never automate
+remove/apply as conflict recovery. Older 1.2.1 previews lack these fields: absence is not
+proof that a connection is unmanaged, and a project declaration error is not a reason
+to invent a manifest. Upgrade only when authorized; retain known managed settings.
+
+With ap 1.2.2, an ordinary project needs no ap.project.json for passive
+hook connection. When an existing valid manifest is present, Codex additionally installs
+the product MCP integration and declared product mapping stays enabled. Invalid manifests
+remain errors. `--allow-writes` for product MCP requires that existing declaration.
+Hooks retain exact root/session matching and never create a product/goal declaration.
+Removal is
 `ap connect remove --agent NAME` and preserves private backups.
 
 Codex uses project `.codex/config.toml` and managed AGENTS guidance; Claude uses
@@ -39,6 +58,28 @@ Codex uses project `.codex/config.toml` and managed AGENTS guidance; Claude uses
 These adapters store explicit plans and session identity, not raw conversations.
 Native trust/reload requirements belong to the harness. Configuration alone is not proof
 that hooks have run; check actual event reception with `ap doctor` for the known source.
+
+## Read-only diagnostics and shell upgrade
+
+`ap doctor --agent NAME` checks that selected native CLI and its project connection;
+other installed harnesses are optional. Without a product declaration passive mode is
+normal. A declared product with no cached observations is not an invented goal or failure.
+Invalid declarations, corrupt cached product identity, ownership conflicts and unreadable
+explicit sources are unhealthy. Default doctor returns its JSON report with exit 0;
+`--strict` returns nonzero when unhealthy so scripts can enforce their requested checks.
+
+`ap doctor --shell zsh --rc PATH` checks one selected file without executing it. With no
+explicit shell, a supported SHELL selects default user setup; absent automatic setup is
+informational. `--rc` alone selects zsh. `ap shell status --shell NAME` reports current,
+outdated, absent, partial or conflict with a safe next action and upgrade_required. Only
+a recognized legacy block is an upgrade candidate. An edited block stays conflict and
+must not be replaced or removed automatically. Default bash handles active and previously
+owned login files; user login-file precedence is preserved.
+
+`ap doctor --terminal-slot PATH` inspects that exact per-launch slot (or current
+AP_TERMINAL_SLOT). It validates metadata, owner liveness and selected transcript identity;
+waiting startup is distinct from stale/conflict. It never scans for a newest slot, reads
+focused-pane state, emits terminal request arguments, or repairs native settings.
 
 ## Pane source and placement
 

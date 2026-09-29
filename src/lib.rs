@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod codex_client;
 pub mod compatibility;
 pub mod connection;
+mod connection_status;
 pub mod dashboard;
 pub mod doctor;
 mod fault;

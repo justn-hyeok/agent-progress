@@ -11,12 +11,13 @@ fn automatic_window_hook_stdout_is_one_valid_json_document() {
         os::unix::fs::PermissionsExt,
         process::{Command, Stdio},
     };
-    let temp = tempdir().unwrap();
-    fixture(temp.path());
-    let bin = temp.path().join("bin");
-    fs::create_dir(&bin).unwrap();
-    let mock = bin.join("herdr");
-    fs::write(&mock,r#"#!/usr/bin/env python3
+    for opt_out in [false, true] {
+        let temp = tempdir().unwrap();
+        fixture(temp.path());
+        let bin = temp.path().join("bin");
+        fs::create_dir(&bin).unwrap();
+        let mock = bin.join("herdr");
+        fs::write(&mock,r#"#!/usr/bin/env python3
 import os,sys,json
 a=sys.argv[1:];root=os.environ['AP_MOCK_ROOT'];pid=int(os.environ['AP_MOCK_PARENT'])
 if a==['agent','get','w1:p1']: r={'agent':{'agent':'claude','terminal_id':'source','foreground_cwd':root,'agent_status':'idle'}}
@@ -29,47 +30,51 @@ elif a[:3]==['pane','run','w1:p2']:sys.exit(0)
 else:sys.exit(2)
 print(json.dumps({'result':r}))
 "#).unwrap();
-    fs::set_permissions(mock, fs::Permissions::from_mode(0o755)).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ap"))
-        .args(["bridge", "--agent", "claude"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("HERDR_ENV", "1")
-        .env("HERDR_PANE_ID", "w1:p1")
-        .env_remove("AP_AUTO_OPEN")
-        .env("AP_MOCK_ROOT", temp.path())
-        .env("AP_MOCK_PARENT", std::process::id().to_string())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let event = json!({"cwd":temp.path(),"session_id":"stdout-contract","last_assistant_message":"### 진행 계획\n- [x] AP-01 Observe\n- [ ] AP-02 Preserve"});
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(event.to_string().as_bytes())
-        .unwrap();
-    let output = child.wait_with_output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["continue"], true);
-    assert!(
-        fs::read_dir(temp.path().join(".agent-progress"))
+        fs::set_permissions(mock, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ap"));
+        command
+            .args(["bridge", "--agent", "claude"])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("HERDR_ENV", "1")
+            .env("HERDR_PANE_ID", "w1:p1")
+            .env_remove("AP_AUTO_OPEN")
+            .env_remove("AP_TERMINAL_SLOT")
+            .env("AP_MOCK_ROOT", temp.path())
+            .env("AP_MOCK_PARENT", std::process::id().to_string())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if opt_out {
+            command.env("AP_AUTO_OPEN", "0");
+        }
+        let mut child = command.spawn().unwrap();
+        let event = json!({"cwd":temp.path(),"session_id":"stdout-contract","last_assistant_message":"### 진행 계획\n- [x] AP-01 Observe\n- [ ] AP-02 Preserve"});
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(event.to_string().as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["continue"], true);
+        let opened = fs::read_dir(temp.path().join(".agent-progress"))
             .unwrap()
             .any(|e| {
                 let name = e.unwrap().file_name();
                 let name = name.to_string_lossy();
                 name.starts_with("window-") && name.ends_with(".json")
-            })
-    );
+            });
+        assert_eq!(opened, !opt_out);
+    }
 }
 
 fn fixture(root: &std::path::Path) {

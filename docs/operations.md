@@ -1,5 +1,30 @@
 # 세 에이전트 제품 사용과 복구
 
+## 1.2.2 일반 프로젝트 연결과 진단
+
+`ap connect preview --agent NAME`은 기존 출력에 `connection_status`,
+`next_action`, 정적인 `diagnostic`을 추가한다. unmanaged/apply는 새 연결 가능,
+managed/none은 기존 연결 유지, conflict/inspect는 사용자 수정·미완료 설치·소유권
+없는 설정·잘못된 경로를 먼저 점검하라는 뜻이다. preview는 파일을 만들지 않고
+사용자 설정 전문을 출력하지 않는다. apply/remove의 보호 동작은 유지한다.
+
+일반 프로젝트에는 manifest가 필요 없다. Codex는 passive hooks만 설치하며 기존
+유효한 ap.project.json이 있을 때 product MCP를 추가한다. Claude/OpenCode 훅도
+manifest 없이 native 계획을 읽는다. 선언·goal·roadmap을 임의 생성하지 않는다.
+잘못된 선언과 다른 root를 가리키는 선언은 오류로 남긴다. product write MCP는
+기존 manifest가 필요하다. AP_AUTO_OPEN=0은 실행기에서 덮어쓰지 않는다.
+
+`ap doctor --agent NAME`은 native CLI 설치/버전, 현재 프로젝트 연결 소유권,
+선택적 제품 선언·캐시 무결성, 현재 셸 설정, tmux 가용성을 점검한다. 제품
+선언이나 사용하지 않은 셸 연결이 없는 것은 기본적으로 정보 상태다. 손상된
+manifest·roadmap·캐시나 연결 충돌은 건강하지 않은 상태로 표시한다. `--pane`,
+`--rollout`, `--terminal-slot`은 명시한 원본만 읽고 최신 후보를 추측하지 않는다.
+기본 종료 코드는 보고용 0으로 유지한다. 선택한 검사를 자동화에서 통과 조건으로
+삼을 때 `--strict`를 사용하며, `healthy:false`이면 JSON을 출력한 뒤 실패한다.
+`--shell NAME --rc PATH`는 해당 rc 파일만 점검한다. 자동 셸 검사에서 absent·partial은
+안내로 남기고, explicit 셸 검사에서는 current만 통과한다. 모든 검사는 원시 설정
+내용을 출력하지 않으며 파일·훅·로그인·사용자 터미널을 수정하지 않는다.
+
 ## 1.2.1 bash·fish, 일반 터미널, 호환성 검사
 
 셸 설정에는 `--shell bash` 또는 `--shell fish`를 지정한다. bash 기본 설치는

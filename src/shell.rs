@@ -133,6 +133,151 @@ pub fn manage(action: &str, rc: &Path) -> Result<Value> {
     manage_for(action, rc, "zsh")
 }
 
+/// Read-only state. Unknown/edited blocks are conflicts, never upgrade candidates.
+fn inspect_rc(rc: &Path, shell: &str) -> Result<Value> {
+    let current = block(shell)?;
+    let rc = if rc.is_absolute() {
+        rc.to_owned()
+    } else {
+        std::env::current_dir()?.join(rc)
+    };
+    let mut output = json!({"shell":shell,"rc":rc,"installed":false,"status":"conflict","upgrade_required":false,"block_revision":null,"next_action":"inspect","mutates":false});
+    if rc.is_symlink() {
+        output["diagnostic"] = json!("symlink_rc");
+        return Ok(output);
+    }
+    let bytes = match read(&rc) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            output["diagnostic"] = json!("unreadable_rc");
+            return Ok(output);
+        }
+    };
+    let text = match std::str::from_utf8(&bytes) {
+        Ok(text) => text,
+        Err(_) => {
+            output["diagnostic"] = json!("non_utf8_rc");
+            return Ok(output);
+        }
+    };
+    match managed(text, shell) {
+        Ok(None) => {
+            output["status"] = json!("absent");
+            output["next_action"] = json!("install");
+            output["diagnostic"] = json!("no_managed_setup");
+        }
+        Ok(Some(span)) => {
+            let latest = text[span] == current;
+            output["installed"] = json!(true);
+            output["status"] = json!(if latest { "current" } else { "outdated" });
+            output["upgrade_required"] = json!(!latest);
+            output["block_revision"] = json!(if latest { 2 } else { 1 });
+            output["next_action"] = json!(if latest { "none" } else { "upgrade" });
+            output["diagnostic"] = json!(if latest {
+                "current_block"
+            } else {
+                "legacy_block"
+            });
+        }
+        Err(_) => {
+            output["diagnostic"] = json!("edited_or_incomplete_managed_block");
+        }
+    }
+    Ok(output)
+}
+
+fn selected_paths(shell: &str, rc: Option<&Path>, action: &str) -> Result<Vec<PathBuf>> {
+    if let Some(rc) = rc {
+        return Ok(vec![rc.to_owned()]);
+    }
+    let primary = default_rc_for(shell)?;
+    if shell != "bash" {
+        return Ok(vec![primary]);
+    }
+    let home = primary
+        .parent()
+        .context("bash home unavailable")?
+        .to_owned();
+    let profile = [".bash_profile", ".bash_login", ".profile"]
+        .iter()
+        .map(|name| home.join(name))
+        .find(|path| path.exists() || path.is_symlink())
+        .unwrap_or_else(|| home.join(".profile"));
+    let mut paths = vec![primary, profile.clone()];
+    if matches!(action, "preview" | "status" | "install" | "remove") {
+        for name in [".bash_profile", ".bash_login", ".profile"] {
+            let path = home.join(name);
+            if path != profile && (path.exists() || path.is_symlink()) {
+                let state = inspect_rc(&path, shell)?;
+                if state["installed"] == true || state["status"] == "conflict" {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    Ok(paths)
+}
+
+pub fn inspect_selected(shell: &str, rc: Option<&Path>) -> Result<Value> {
+    let paths = selected_paths(shell, rc, "status")?;
+    let states = paths
+        .iter()
+        .map(|path| inspect_rc(path, shell))
+        .collect::<Result<Vec<_>>>()?;
+    if states.len() == 1 {
+        return Ok(states.into_iter().next().unwrap());
+    }
+    let all = |status: &str| states.iter().all(|s| s["status"] == status);
+    let any = |status: &str| states.iter().any(|s| s["status"] == status);
+    let status = if any("conflict") {
+        "conflict"
+    } else if any("outdated") {
+        "outdated"
+    } else if all("current") {
+        "current"
+    } else if all("absent") {
+        "absent"
+    } else {
+        "partial"
+    };
+    let next = match status {
+        "current" => "none",
+        "outdated" => "upgrade",
+        "conflict" => "inspect",
+        _ => "install",
+    };
+    Ok(
+        json!({"shell":shell,"installed":states.iter().all(|s|s["installed"]==true),"status":status,"upgrade_required":any("outdated"),"next_action":next,"mutates":false,"files":states}),
+    )
+}
+
+/// Public selection used by both CLI and doctor; no duplicated bash profile policy.
+pub fn manage_selected(action: &str, shell: &str, rc: Option<&Path>) -> Result<Value> {
+    if action == "status" {
+        return inspect_selected(shell, rc);
+    }
+    let paths = selected_paths(shell, rc, action)?;
+    if paths.len() == 1 {
+        return manage_for(action, &paths[0], shell);
+    }
+    if action != "preview" {
+        for path in &paths {
+            ensure!(
+                inspect_rc(path, shell)?["status"] != "conflict",
+                "shell configuration conflicts; preserving all selected files"
+            );
+        }
+    }
+    let results = paths
+        .iter()
+        .map(|path| manage_for(action, path, shell))
+        .collect::<Result<Vec<_>>>()?;
+    let mut state = inspect_selected(shell, rc)?;
+    state["files"] = json!(results);
+    state["mutates"] = json!(matches!(action, "install" | "remove"));
+    Ok(state)
+}
+
 pub fn manage_for(action: &str, rc: &Path, shell: &str) -> Result<Value> {
     let block = block(shell)?;
     ensure!(
@@ -144,6 +289,13 @@ pub fn manage_for(action: &str, rc: &Path, shell: &str) -> Result<Value> {
     } else {
         std::env::current_dir()?.join(rc)
     };
+    if matches!(action, "status" | "preview") {
+        let mut output = inspect_rc(&rc, shell)?;
+        if action == "preview" {
+            output["managed_addition"] = json!(block);
+        }
+        return Ok(output);
+    }
     ensure!(
         !rc.is_symlink(),
         "refusing symlink rc file; choose its explicit regular target"
@@ -151,13 +303,6 @@ pub fn manage_for(action: &str, rc: &Path, shell: &str) -> Result<Value> {
     let before = read(&rc)?;
     let text = std::str::from_utf8(&before).context("rc file must be UTF-8; preserving it")?;
     let span = managed(text, shell)?;
-    if matches!(action, "status" | "preview") {
-        let mut output = json!({"shell":shell,"rc":rc,"installed":span.is_some(),"mutates":false});
-        if action == "preview" {
-            output["managed_addition"] = json!(block);
-        }
-        return Ok(output);
-    }
     if (action == "install" && text.contains(&block)) || (action == "remove" && span.is_none()) {
         return Ok(json!({"shell":shell,"rc":rc,"installed":span.is_some(),"changed":false}));
     }
@@ -182,8 +327,19 @@ pub fn manage_for(action: &str, rc: &Path, shell: &str) -> Result<Value> {
         .truncate(false)
         .mode(0o600)
         .open(lock_path)?;
-    lock.try_lock_exclusive()
-        .context("shell configuration is busy")?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => break,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Err(error) => return Err(error).context("shell configuration is busy"),
+        }
+    }
     ensure!(
         read(&rc)? == before,
         "rc changed during setup; retry without overwriting edits"
@@ -222,6 +378,6 @@ pub fn manage_for(action: &str, rc: &Path, shell: &str) -> Result<Value> {
         .context("could not replace rc file atomically")?;
     Ok(
         json!({"shell":shell,"rc":rc,"installed":action=="install","changed":true,"backup":backup,
-        "activate":"Open a new terminal or source this rc file. Bash login profiles must source .bashrc. Removal takes effect in new shells; clear a loaded function with unset -f codex (bash), unfunction codex (zsh), or functions -e codex (fish)."}),
+        "activate":"Open a new terminal or source the selected rc files. Default bash setup handles its active login file too. Removal takes effect in new shells; clear a loaded function with unset -f codex (bash), unfunction codex (zsh), or functions -e codex (fish)."}),
     )
 }

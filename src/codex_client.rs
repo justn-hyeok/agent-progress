@@ -276,7 +276,9 @@ pub fn can_observe(args: &[String]) -> bool {
 pub fn launch(args: Vec<String>) -> Result<()> {
     let mut args = args;
     let mut native = Command::new("codex");
-    native.env("AP_AUTO_OPEN", "1");
+    if std::env::var_os("AP_AUTO_OPEN").is_none() {
+        native.env("AP_AUTO_OPEN", "1");
+    }
     let portable = crate::terminal::slot();
     if (std::env::var("HERDR_ENV").as_deref() != Ok("1") && portable.is_none())
         || !can_observe(&args)

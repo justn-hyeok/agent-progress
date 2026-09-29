@@ -352,3 +352,130 @@ fn bash_removal_finds_old_managed_login_file_after_user_changes_precedence() {
         "# user added higher precedence\n"
     );
 }
+
+#[test]
+fn shell_status_distinguishes_current_legacy_absent_and_edited_without_mutation() {
+    let dir = tempdir().unwrap();
+    let rc = dir.path().join("rc");
+    let absent = shell::inspect_selected("zsh", Some(&rc)).unwrap();
+    assert_eq!(absent["status"], "absent");
+    assert_eq!(absent["upgrade_required"], false);
+    assert!(!rc.exists());
+    fs::write(&rc, format!("# user\n{}", shell::BLOCK)).unwrap();
+    let before = fs::read(&rc).unwrap();
+    let old = shell::manage_for("status", &rc, "zsh").unwrap();
+    assert_eq!(old["installed"], true);
+    assert_eq!(old["status"], "outdated");
+    assert_eq!(old["upgrade_required"], true);
+    assert_eq!(old["next_action"], "upgrade");
+    assert_eq!(fs::read(&rc).unwrap(), before);
+    shell::manage_for("install", &rc, "zsh").unwrap();
+    let current = shell::inspect_selected("zsh", Some(&rc)).unwrap();
+    assert_eq!(current["status"], "current");
+    assert_eq!(current["upgrade_required"], false);
+    let edited = fs::read_to_string(&rc)
+        .unwrap()
+        .replace("--agent codex", "--agent NEVER-PRINT-THIS");
+    fs::write(&rc, &edited).unwrap();
+    let conflict = shell::inspect_selected("zsh", Some(&rc)).unwrap();
+    assert_eq!(conflict["status"], "conflict");
+    assert_eq!(conflict["upgrade_required"], false);
+    assert_eq!(conflict["next_action"], "inspect");
+    assert!(!conflict.to_string().contains("NEVER-PRINT-THIS"));
+    assert!(shell::manage_for("install", &rc, "zsh").is_err());
+    assert_eq!(fs::read_to_string(&rc).unwrap(), edited);
+}
+
+#[test]
+fn default_bash_status_and_upgrade_include_previous_owned_login_file() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join(".profile"), shell::block("bash").unwrap()).unwrap();
+    fs::write(
+        dir.path().join(".bash_profile"),
+        "# user changed precedence\n",
+    )
+    .unwrap();
+    let call = |action: &str| {
+        Command::new(env!("CARGO_BIN_EXE_ap"))
+            .args(["shell", action, "--shell", "bash"])
+            .env("HOME", dir.path())
+            .output()
+            .unwrap()
+    };
+    let initial = call("status");
+    assert!(initial.status.success());
+    let initial: Value = serde_json::from_slice(&initial.stdout).unwrap();
+    assert_eq!(initial["status"], "partial");
+    assert_eq!(initial["files"].as_array().unwrap().len(), 3);
+    assert!(call("install").status.success());
+    let installed = call("status");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&installed.stdout).unwrap()["status"],
+        "current"
+    );
+    assert!(call("remove").status.success());
+    let removed = call("status");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&removed.stdout).unwrap()["status"],
+        "absent"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".bash_profile")).unwrap(),
+        "# user changed precedence\n"
+    );
+}
+
+#[test]
+fn inactive_bash_login_file_with_unreadable_owned_block_is_conflict() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join(".bashrc"), shell::block("bash").unwrap()).unwrap();
+    fs::write(
+        dir.path().join(".bash_profile"),
+        shell::block("bash").unwrap(),
+    )
+    .unwrap();
+    let mut damaged = shell::block("bash").unwrap().into_bytes();
+    damaged.push(0xFF);
+    fs::write(dir.path().join(".profile"), &damaged).unwrap();
+    let before = fs::read(dir.path().join(".profile")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["shell", "status", "--shell", "bash"])
+        .env("HOME", dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["status"], "conflict");
+    assert_eq!(report["next_action"], "inspect");
+    assert_eq!(report["files"].as_array().unwrap().len(), 3);
+    assert_eq!(fs::read(dir.path().join(".profile")).unwrap(), before);
+    let apply = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["shell", "install", "--shell", "bash"])
+        .env("HOME", dir.path())
+        .output()
+        .unwrap();
+    assert!(!apply.status.success());
+    assert_eq!(fs::read(dir.path().join(".profile")).unwrap(), before);
+}
+
+#[test]
+fn shell_setup_waits_for_a_transient_lock_without_overwriting_other_content() {
+    use fs2::FileExt;
+    let dir = tempdir().unwrap();
+    let rc = dir.path().join("rc");
+    fs::write(&rc, "# preserved\n").unwrap();
+    let lock = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(dir.path().join("rc.agent-progress.lock"))
+        .unwrap();
+    lock.lock_exclusive().unwrap();
+    let thread = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        FileExt::unlock(&lock).unwrap();
+    });
+    shell::manage_for("install", &rc, "zsh").unwrap();
+    thread.join().unwrap();
+    assert!(fs::read_to_string(rc).unwrap().starts_with("# preserved\n"));
+}

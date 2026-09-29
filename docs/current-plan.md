@@ -1,5 +1,44 @@
 # Current release plan
 
+## Diagnostic completion and release — 2026-09-30
+
+- [x] [AP-09/doctor-complete] Extend read-only doctor checks for connections, shell setup and exact terminal slots; preserve default exit behavior and add opt-in strict checking.
+- [x] [AP-06/shell-upgrade-status] Report current/outdated/absent/partial/conflict shell setup and a safe next action without altering user configuration.
+- [>] [AP-19/refinement-release] Verify, publish and install the complete refinement package with matching GitHub/Homebrew assets.
+
+The user requested both previously deferred diagnostics and publication. Continue in
+the existing skill/CLI task worktree, preserve its prior changes, and include the earlier
+manifest-free/opt-out/preview improvements. Target the next patch release, 1.2.2.
+Local candidate verified: 129 Rust tests, fmt/Clippy, release build, release-binary
+tmux/PTY, skill validation and exact archive install/uninstall. Repacking was byte-identical.
+SHA-256: a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43.
+Independent Astra review found two diagnostic misses (hidden non-UTF8 managed bash file,
+invalid roadmap without cached state); both were reproduced, fixed and covered by tests.
+
+## Skill and CLI refinement — 2026-09-29
+
+- [x] [AP-06/skill-cli-audit] Review skill/CLI contract gaps with user-requested Astra.
+- [x] [AP-09/skill-cli-contract] Verify the findings and implement a small evidence-backed first improvement set.
+- [x] [AP-19/skill-cli-docs] Align skill, command help and tests with the verified implementation.
+
+Base: bd5a875148eb746a42222821731ac597925fe9da (published 1.2.1 follow-up).
+Workspace: /Users/justn/dev/agent-progress-skill-cli. Astra uses the native Codex subagent
+surface, gpt-6-astra at medium effort, for the initial review and a bounded connection
+state helper implementation. Root owns CLI/bridge integration, reproduction, tests and
+skill alignment. Global setup changes and a new publication are not delegated. Product choices that
+cannot be resolved from source evidence remain explicit; routine verified fixes can proceed.
+
+Reproduced on installed 1.2.1 in isolated fixtures: all three preview commands fail without
+a manifest, and all three launchers overwrite AP_AUTO_OPEN=0 with 1. The first implementation
+set makes product mapping optional, retains explicit opt-out, and adds read-only connection
+ownership state to preview. Existing public JSON fields and protected apply/remove remain.
+Final local verification: 118 Rust tests, fmt/Clippy, release build, real tmux/PTY fixture
+and source skill validation passed. Astra's independent review found a broken-manifest
+auto-discovery fallback; it was reproduced and fixed with a regression. Explicit root
+matching prevents declaration links from writing another product's state. Native settings
+and global installed 1.2.1/skill were not changed. Work is local/unpublished; doctor and
+shell-status expansion are the next candidates, not part of this completed first set.
+
 ## 1.2.1 release — 2026-09-29
 
 - [x] [AP-19/portable-package] Version and verify the exact 1.2.1 archive and installation.

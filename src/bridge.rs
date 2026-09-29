@@ -85,11 +85,29 @@ pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Resul
     );
     let cwd = PathBuf::from(event["cwd"].as_str().context("hook cwd required")?).canonicalize()?;
     let project = if let Some(root) = selected_root {
-        Project::open(&root.join("ap.project.json"))?
+        let manifest = root.join("ap.project.json");
+        if manifest.exists() || manifest.is_symlink() {
+            let project = Project::open(&manifest)?;
+            ensure!(
+                project.root() == root.canonicalize()?,
+                "project declaration resolves outside connection root"
+            );
+            Some(project)
+        } else {
+            None
+        }
     } else {
-        Project::discover(&cwd)?.context("no project declaration for hook")?
+        Project::discover(&cwd)?
     };
-    let root = project.root().canonicalize()?;
+    let root = if let Some(root) = selected_root {
+        root.canonicalize()?
+    } else {
+        project
+            .as_ref()
+            .map(|p| p.root().to_owned())
+            .unwrap_or_else(|| cwd.clone())
+            .canonicalize()?
+    };
     ensure!(
         cwd.starts_with(&root),
         "hook belongs to a different project"
@@ -281,7 +299,9 @@ pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Resul
     }
     let mut feed = live::Feed::open(rollout.clone(), Some(session), None)?;
     feed.refresh_all()?;
-    project.project(&feed.snapshot)?;
+    if let Some(project) = project {
+        project.project(&feed.snapshot)?;
+    }
     register(agent, native, session, &rollout, &root, &dir)
 }
 

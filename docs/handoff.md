@@ -1,5 +1,11 @@
 # Release handoff
 
+1.2.2 includes the complete skill/CLI refinement: manifest-free passive connection,
+AP_AUTO_OPEN=0 preservation, preview ownership status, expanded read-only doctor with
+opt-in --strict and exact terminal slots, and shell current/outdated/partial/conflict
+classification. Existing product mapping/MCP, user settings and protected apply/remove
+remain intact. Verified outcomes are recorded in docs/verification/skill-cli.md.
+
 1.2.1 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.1.
 Tag/source is 8e0b86ee1c9c4baeecec7e25eb7e5c965ddde99c; source Rust CI passed.
 Archive SHA-256 is d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef.

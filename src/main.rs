@@ -92,7 +92,7 @@ enum Command {
         #[arg(long)]
         root: Option<PathBuf>,
     },
-    /// Optional project-local integration. Preview by default; backs up before apply.
+    /// Passive project-local hooks; optional product MCP when ap.project.json exists. Preview reports management state.
     Connect {
         #[arg(value_parser=["preview","apply","remove"],default_value="preview")]
         action: String,
@@ -121,6 +121,20 @@ enum Command {
         pane: Option<String>,
         #[arg(long)]
         rollout: Option<PathBuf>,
+        /// Check the selected agent as required; other installed harnesses are optional.
+        #[arg(long,value_parser=["codex","claude","opencode"])]
+        agent: Option<String>,
+        #[arg(long,value_parser=["zsh","bash","fish"])]
+        shell: Option<String>,
+        /// Read-only check of one shell file instead of default user setup.
+        #[arg(long)]
+        rc: Option<PathBuf>,
+        /// Inspect this exact owned terminal slot; never select a newest launch.
+        #[arg(long)]
+        terminal_slot: Option<PathBuf>,
+        /// Exit nonzero for unhealthy requested checks. Default remains report-only.
+        #[arg(long)]
+        strict: bool,
     },
     /// Local stdio MCP. Read-only unless writes are explicitly enabled.
     Mcp {
@@ -361,53 +375,12 @@ fn run(cli: Cli) -> Result<()> {
             return Ok(());
         }
         Command::Shell { action, rc, shell } => {
-            if shell == "bash" && rc.is_none() {
-                let bashrc = agent_progress::shell::default_rc_for("bash")?;
-                let home = bashrc.parent().context("bash home unavailable")?.to_owned();
-                // Bash reads only the first existing login file. Never create a
-                // higher-priority file that would hide the user's existing startup.
-                let profile = [".bash_profile", ".bash_login", ".profile"]
-                    .iter()
-                    .map(|name| home.join(name))
-                    .find(|path| path.exists() || path.is_symlink())
-                    .unwrap_or_else(|| home.join(".profile"));
-                let mut paths = vec![bashrc, profile.clone()];
-                // A new user login file may have changed precedence after installation.
-                // Status/removal must still find our block in the old login file.
-                if matches!(action.as_str(), "status" | "remove") {
-                    for name in [".bash_profile", ".bash_login", ".profile"] {
-                        let path = home.join(name);
-                        if path != profile
-                            && agent_progress::shell::manage_for("status", &path, &shell)?["installed"]
-                                == true
-                        {
-                            paths.push(path);
-                        }
-                    }
-                }
-                // Preflight both files before making either change.
-                for path in &paths {
-                    agent_progress::shell::manage_for("status", path, &shell)?;
-                }
-                let results = paths
-                    .iter()
-                    .map(|path| agent_progress::shell::manage_for(&action, path, &shell))
-                    .collect::<Result<Vec<_>>>()?;
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(
-                        &serde_json::json!({"shell":shell,"installed":results.iter().all(|r|r["installed"]==true),"files":results})
-                    )?
-                );
-                return Ok(());
-            }
-            let rc = rc
-                .map(Ok)
-                .unwrap_or_else(|| agent_progress::shell::default_rc_for(&shell))?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&agent_progress::shell::manage_for(
-                    &action, &rc, &shell
+                serde_json::to_string_pretty(&agent_progress::shell::manage_selected(
+                    &action,
+                    &shell,
+                    rc.as_deref()
                 )?)?
             );
             return Ok(());
@@ -504,7 +477,9 @@ fn run(cli: Cli) -> Result<()> {
                 return agent_progress::codex_client::launch(args);
             }
             let mut command = std::process::Command::new(&agent);
-            command.env("AP_AUTO_OPEN", "1");
+            if std::env::var_os("AP_AUTO_OPEN").is_none() {
+                command.env("AP_AUTO_OPEN", "1");
+            }
             command.args(args);
             return Err(command.exec().into());
         }
@@ -582,12 +557,25 @@ fn run(cli: Cli) -> Result<()> {
             project,
             pane,
             rollout,
+            agent,
+            shell,
+            rc,
+            terminal_slot,
+            strict,
         } => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&agent_progress::doctor::inspect(
-                    project, pane, rollout
-                ))?
+            let report = agent_progress::doctor::inspect_options(agent_progress::doctor::Options {
+                project,
+                pane,
+                rollout,
+                agent,
+                shell,
+                rc,
+                terminal_slot,
+            });
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(
+                !strict || report["healthy"] == true,
+                "doctor found unhealthy requested checks"
             );
             return Ok(());
         }

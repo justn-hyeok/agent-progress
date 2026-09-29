@@ -32,3 +32,14 @@ Existing parent state from 1.2.2 is preserved, not automatically restored; the o
 release note names the issue. Apple Developer signing and other OS/architectures are
 outside this verified release scope. Publication/CI/installation evidence is added
 after the matching tag and package are live.
+
+Publication: v1.2.3 resolves to e0a0e5f19154d2677015ee418c5cf446f6e63a5f.
+The [source CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36605833772)
+and [tag CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36606160641)
+passed. Published archive bytes matched the local SHA-256 above. Formula commit
+f826286b14f3e63026a81d7793d73f42bbf3382f passed
+[Homebrew installation CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36606223342)
+and [Rust CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36606223423).
+Local brew upgrade/test/audit, installed binary hash, current managed zsh setup and the
+installed ap skill matched the tested source. The 1.2.2 release note was amended with
+the known issue and a link to 1.2.3; its tag and archive remain unchanged.

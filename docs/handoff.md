@@ -1,5 +1,13 @@
 # Release handoff
 
+1.2.3 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.3.
+Tag/source e0a0e5f19154d2677015ee418c5cf446f6e63a5f and formula
+f826286b14f3e63026a81d7793d73f42bbf3382f passed Rust/Homebrew CI.
+Archive SHA-256 is da1dabcfa3ce7509e4dfd1597739dad63556f179f44b9089beea246cd3d320e6.
+The public download, exact local installation, installed CLI, managed shell and ap skill
+were verified. Live user panes were retained; the old 1.2.2 binary was not cleaned up.
+The 1.2.2 release note names the nested-project issue and links 1.2.3.
+
 1.2.3 hotfix candidate: a nested manifest-free project's native session no longer
 projects into its ancestor's product state. A private passive boundary is retained
 after connector removal, and an explicit declaration at the child root still wins.

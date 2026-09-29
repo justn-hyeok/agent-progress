@@ -4,7 +4,7 @@
 
 - [x] [AP-06/passive-boundary] Keep a manifest-free child project separate from its ancestor product plan, including when its own connection is removed.
 - [x] [AP-09/passive-native-check] Verify isolated project projection and live installed Claude/OpenCode native plan/resume paths.
-- [ ] [AP-19/passive-hotfix-release] Publish and install a checked patch release without changing the existing 1.2.2 tag/assets.
+- [x] [AP-19/passive-hotfix-release] Publish and install a checked patch release without changing the existing 1.2.2 tag/assets.
 
 Readiness check reproduced a 1.2.2 fault in an isolated nested fixture: follow attached
 the child plan to its ancestor's product and wrote ancestor progress. No user data was
@@ -12,6 +12,16 @@ changed by that reproduction. The fix records an explicit passive root, respects
 connection and nested Git boundaries, and continues to select a declaration at the
 project's own root first. Prior product state is preserved; it is not silently rewritten.
 Target a new 1.2.3 release after checks, keeping v1.2.2 immutable.
+Published hotfix: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.3.
+Tag/source e0a0e5f19154d2677015ee418c5cf446f6e63a5f passed Rust CI
+(branch run 36605833772; tag run 36606160641). Homebrew formula
+f826286b14f3e63026a81d7793d73f42bbf3382f passed install CI 36606223342
+and Rust CI 36606223423. Downloaded archive matched SHA-256
+da1dabcfa3ce7509e4dfd1597739dad63556f179f44b9089beea246cd3d320e6.
+Local brew upgrade/test/audit and exact installed binary match passed; the ap skill was
+backed up/upgraded and validated. Existing managed zsh setup stayed current, prior
+managed binary version was retained, and running user panes/credentials were untouched.
+The v1.2.2 release note discloses its nested-project issue and links this hotfix.
 Local candidate verified: 131 Rust tests, fmt/Clippy, release build, PTY, skill validation,
 exact archive installation/removal and byte-identical repackaging. Archive SHA-256:
 da1dabcfa3ce7509e4dfd1597739dad63556f179f44b9089beea246cd3d320e6.

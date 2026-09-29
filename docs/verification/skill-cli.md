@@ -62,3 +62,15 @@ all three shell statuses, tmux forwarding and narrow uninstall. Repacking was
 byte-identical. Archive SHA-256:
 a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43.
 Authenticated native producer and human acceptance were not rerun for this batch.
+
+Publication: v1.2.2 points to 0822dd5324e563f0c1f2fefba9e6c39bac175a7b.
+The [source CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36599817895)
+and tag CI passed. The public archive download matched the SHA-256 above. Formula commit
+691988cec8475c91377fbb729934387cbd6651e2 passed
+[Homebrew install CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36600288216).
+Its [Rust CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36600288191)
+first hit a transient configuration-lock busy error (os error 35) in the existing
+connection removal test, then passed the full rerun without changing source or tag.
+Local brew upgrade/test/audit and the installed CLI's strict Codex/zsh doctor passed;
+the installed binary hash matched the tested release binary. Global ap skill updates
+were limited to baseline-matching files with private backups and passed validation.

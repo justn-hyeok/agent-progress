@@ -4,7 +4,7 @@
 
 - [x] [AP-09/doctor-complete] Extend read-only doctor checks for connections, shell setup and exact terminal slots; preserve default exit behavior and add opt-in strict checking.
 - [x] [AP-06/shell-upgrade-status] Report current/outdated/absent/partial/conflict shell setup and a safe next action without altering user configuration.
-- [>] [AP-19/refinement-release] Verify, publish and install the complete refinement package with matching GitHub/Homebrew assets.
+- [x] [AP-19/refinement-release] Verify, publish and install the complete refinement package with matching GitHub/Homebrew assets.
 
 The user requested both previously deferred diagnostics and publication. Continue in
 the existing skill/CLI task worktree, preserve its prior changes, and include the earlier
@@ -14,6 +14,18 @@ tmux/PTY, skill validation and exact archive install/uninstall. Repacking was by
 SHA-256: a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43.
 Independent Astra review found two diagnostic misses (hidden non-UTF8 managed bash file,
 invalid roadmap without cached state); both were reproduced, fixed and covered by tests.
+Published release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.2.
+Tag/source commit 0822dd5324e563f0c1f2fefba9e6c39bac175a7b passed Rust CI
+(run 36599817895 and tag run 36600215040). Homebrew formula commit
+691988cec8475c91377fbb729934387cbd6651e2 passed install CI (36600288216).
+Its Rust CI run 36600288191 passed on full rerun: the first attempt hit transient
+connection-lock busy (os error 35) in a concurrent test; neither tag nor source changed.
+Published download matched the local archive hash above. Homebrew upgraded this Mac to
+1.2.2; brew test/audit and installed doctor --agent codex --shell zsh --strict passed.
+Installed binary matched the tested release binary. Managed zsh setup remained current,
+global ap skill updated from the exact prior source with private backup and validation,
+and live user panes/native credentials were left intact. Native producer tests for the
+new manifest-free path and human acceptance were not separately performed.
 
 ## Skill and CLI refinement — 2026-09-29
 

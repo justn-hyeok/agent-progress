@@ -1,5 +1,14 @@
 # Release handoff
 
+1.2.2 is published: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.2.
+Tag/source 0822dd5324e563f0c1f2fefba9e6c39bac175a7b passed Rust CI. Archive SHA-256
+is a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43.
+Homebrew formula 691988cec8475c91377fbb729934387cbd6651e2 passed install CI;
+its Rust CI passed on rerun after one transient concurrent connection-lock busy error.
+The published archive and installed 1.2.2 binary matched the tested build. Local brew
+test/audit and installed doctor --strict passed. Global ap skill was backed up/upgraded;
+managed zsh setup was current and running user panes/credentials were preserved.
+
 1.2.2 includes the complete skill/CLI refinement: manifest-free passive connection,
 AP_AUTO_OPEN=0 preservation, preview ownership status, expanded read-only doctor with
 opt-in --strict and exact terminal slots, and shell current/outdated/partial/conflict

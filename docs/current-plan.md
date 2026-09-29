@@ -4,7 +4,7 @@
 
 - [x] [AP-06/shell] Implement optional zsh install/status/remove with preservation and backup.
 - [x] [AP-09/shell] Verify routing, quoting, native escape, non-interactive passthrough and safe removal in real zsh.
-- [>] [AP-19/shell] Release/install the verified shell integration package.
+- [x] [AP-19/shell] Release/install the verified shell integration package.
 
 The user's rc was backed up and updated after isolated tests. No original Codex executable
 was replaced. Existing sessions need a new shell or explicit rc reload. Native project
@@ -13,6 +13,9 @@ post-install user edits; the public command works without a plan file.
 Actual shell spelling `codex resume` opened the correct native Codex 0.157.1 session
 through server 0.158.0 and automatically opened the observer; focus and 28/12 heights
 were retained. 93 tests passed. Non-interactive command bypass was added after review.
+Tag commit 552283697849bee045c01367134b7ee7b0d00916 passed CI.
+Release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.0
+SHA-256: 657bc6f1b941fd14d61ffb584fef6f0b6e01e0ab2cff6efa2842690289cb449d.
 
 ## Native connection follow-up — 2026-09-29
 

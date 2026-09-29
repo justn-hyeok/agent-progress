@@ -1,5 +1,14 @@
 # Release handoff
 
+1.2.3 hotfix candidate: a nested manifest-free project's native session no longer
+projects into its ancestor's product state. A private passive boundary is retained
+after connector removal, and an explicit declaration at the child root still wins.
+The 1.2.2 defect was reproduced in a disposable nested fixture; no user product
+state was changed by that test. Prior 1.2.2 state is preserved for evidence and
+is not rewritten automatically. Actual Claude 2.1.284 native tasks and OpenCode
+1.18.30 native todos progressed 0/2 to 2/2 in manifest-free project fixtures,
+including resume in new processes. Release/installation evidence is pending.
+
 1.2.2 is published: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.2.
 Tag/source 0822dd5324e563f0c1f2fefba9e6c39bac175a7b passed Rust CI. Archive SHA-256
 is a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43.

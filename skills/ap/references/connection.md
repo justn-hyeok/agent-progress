@@ -61,6 +61,13 @@ that hooks have run; check actual event reception with `ap doctor` for the known
 
 ## Read-only diagnostics and shell upgrade
 
+An ordinary manifest-free project nested under another product stays independent in
+1.2.3. Its passive-root marker and retained connection receipt keep historical sessions
+out of the ancestor's product plan even after disconnect. A declaration at the child's
+own root takes precedence. Never remove the marker merely to change a parent percentage.
+If 1.2.2 was used in that arrangement, inspect the ancestor's stored history rather than
+auto-restoring or silently recertifying affected tasks.
+
 `ap doctor --agent NAME` checks that selected native CLI and its project connection;
 other installed harnesses are optional. Without a product declaration passive mode is
 normal. A declared product with no cached observations is not an invented goal or failure.

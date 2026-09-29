@@ -1,5 +1,28 @@
 # Current release plan
 
+## Nested passive-project isolation — 2026-09-30
+
+- [x] [AP-06/passive-boundary] Keep a manifest-free child project separate from its ancestor product plan, including when its own connection is removed.
+- [x] [AP-09/passive-native-check] Verify isolated project projection and live installed Claude/OpenCode native plan/resume paths.
+- [ ] [AP-19/passive-hotfix-release] Publish and install a checked patch release without changing the existing 1.2.2 tag/assets.
+
+Readiness check reproduced a 1.2.2 fault in an isolated nested fixture: follow attached
+the child plan to its ancestor's product and wrote ancestor progress. No user data was
+changed by that reproduction. The fix records an explicit passive root, respects owned
+connection and nested Git boundaries, and continues to select a declaration at the
+project's own root first. Prior product state is preserved; it is not silently rewritten.
+Target a new 1.2.3 release after checks, keeping v1.2.2 immutable.
+Local candidate verified: 131 Rust tests, fmt/Clippy, release build, PTY, skill validation,
+exact archive installation/removal and byte-identical repackaging. Archive SHA-256:
+da1dabcfa3ce7509e4dfd1597739dad63556f179f44b9089beea246cd3d320e6.
+Real Claude Code 2.1.284 (haiku native tasks) and OpenCode 1.18.30
+(opencode-go/glm-5.3-flash native todos) each completed 0/2 → 1/2 → 2/2 with
+stable IDs and new-process resume in manifest-free private fixtures. Their source
+development build was tested before the 1.2.3 version bump. A Codex review found
+concurrent first-hook marker publication could drop an event; the idempotent verified
+marker fix and parallel regression passed. Previously cached product state is not
+automatically rewritten. The 1.2.2 GitHub release notes now disclose that issue.
+
 ## Diagnostic completion and release — 2026-09-30
 
 - [x] [AP-09/doctor-complete] Extend read-only doctor checks for connections, shell setup and exact terminal slots; preserve default exit behavior and add opt-in strict checking.

@@ -120,6 +120,9 @@ pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Resul
         "invalid native session ID"
     );
     let dir = directory(&root)?;
+    if project.is_none() {
+        Project::mark_passive(&root)?;
+    }
     let session = Uuid::new_v5(
         &Uuid::NAMESPACE_URL,
         format!("agent-progress:{agent}:{native}").as_bytes(),

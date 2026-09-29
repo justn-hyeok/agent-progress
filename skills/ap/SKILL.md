@@ -11,7 +11,7 @@ not supervise agents or prove that reported work passed verification.
 
 ## Start from the current project
 
-Check `ap --version` and the relevant command's `--help`; this skill targets 1.2.2.
+Check `ap --version` and the relevant command's `--help`; this skill targets 1.2.3.
 Check actual preview/doctor fields before assuming an older binary has these contracts.
 If the binary is missing, install it when installation is within the request, using
 [connection.md](references/connection.md). Do not change global agent settings.
@@ -34,6 +34,10 @@ For setup, use `ap connect preview --agent NAME` as the decision point. When it 
 retain `managed` settings and inspect a `conflict` without remove/reapply loops. A product
 manifest is optional for passive observation; its presence adds the declared product mapping.
 `AP_AUTO_OPEN=0` keeps automatic opening disabled through the native launcher and hooks.
+
+For an ordinary project nested under another product, keep the child's connection and
+session history separate. If 1.2.2 was used there, inspect the ancestor's product history
+instead of changing its completion claims automatically.
 
 For diagnosis use `ap doctor` with the known agent/source. Add `--strict` only when an
 unhealthy requested check must produce a failing exit code. `--shell NAME --rc PATH`

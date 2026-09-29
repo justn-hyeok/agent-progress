@@ -286,12 +286,68 @@ fn report(task: &mut Task, status: StepState, source: &str, actor: &str) {
 }
 
 impl Project {
+    const PASSIVE_MARKER: &'static [u8] = b"agent-progress passive root v1\n";
+    /// A hook with an explicit plain-project root must never inherit a different
+    /// product declaration from an ancestor when its session is read later.
+    pub(crate) fn mark_passive(root: &Path) -> Result<()> {
+        let path = root.join(".agent-progress/passive-root");
+        if path.exists() || path.is_symlink() {
+            ensure!(
+                crate::recovery::read(&path)? == Self::PASSIVE_MARKER,
+                "passive root marker changed; preserving it"
+            );
+        } else {
+            if let Err(error) = crate::recovery::write(&path, Self::PASSIVE_MARKER, false) {
+                // Another first hook may have published the same immutable marker.
+                // Accept only those exact bytes; unrelated write failures still surface.
+                if !(path.exists() || path.is_symlink()) {
+                    return Err(error);
+                }
+                ensure!(
+                    crate::recovery::read(&path)? == Self::PASSIVE_MARKER,
+                    "passive root marker changed; preserving it"
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub fn discover(cwd: &Path) -> Result<Option<Self>> {
         let cwd = cwd.canonicalize()?;
         for dir in cwd.ancestors() {
             let path = dir.join("ap.project.json");
             if path.exists() || path.is_symlink() {
                 return Self::open(&path).map(Some);
+            }
+            let marker = dir.join(".agent-progress/passive-root");
+            if marker.exists() || marker.is_symlink() {
+                ensure!(
+                    crate::recovery::read(&marker)? == Self::PASSIVE_MARKER,
+                    "passive root marker changed; preserving it"
+                );
+                return Ok(None);
+            }
+            // An installed child connection is a project boundary even before
+            // its first hook writes a session. Retained receipts protect history.
+            for name in [
+                "connection.json",
+                "connection-claude.json",
+                "connection-opencode.json",
+            ] {
+                let receipt = dir.join(".agent-progress").join(name);
+                if receipt.exists() || receipt.is_symlink() {
+                    ensure!(
+                        crate::recovery::read(&receipt).is_ok(),
+                        "passive connection receipt unreadable"
+                    );
+                    return Ok(None);
+                }
+            }
+            // A nested Git checkout is a separate project unless it declares
+            // the same product explicitly at its own root.
+            let git = dir.join(".git");
+            if git.exists() || git.is_symlink() {
+                return Ok(None);
             }
         }
         Ok(None)

@@ -104,6 +104,134 @@ fn ordinary_projects_connect_and_receive_native_plans_without_creating_a_product
 }
 
 #[test]
+fn nested_manifest_free_connection_cannot_project_into_a_parent_product() {
+    use serde_json::json;
+    for agent in ["codex", "claude", "opencode"] {
+        let parent = tempdir().unwrap();
+        let child = parent.path().join("ordinary");
+        fs::create_dir(&child).unwrap();
+        let product_id = uuid::Uuid::new_v4();
+        fs::write(parent.path().join("ap.project.json"),json!({"schema":1,"project_id":product_id,"objective":"Parent product","roadmap":"plan.md"}).to_string()).unwrap();
+        fs::write(parent.path().join("plan.md"), "- [ ] AP-01 Parent task\n").unwrap();
+        assert!(
+            agent_progress::project::Project::discover(&child)
+                .unwrap()
+                .is_some()
+        );
+        connection::manage_agent(&child, "apply", false, agent).unwrap();
+        assert!(
+            agent_progress::project::Project::discover(&child)
+                .unwrap()
+                .is_none()
+        );
+        let native = uuid::Uuid::new_v4();
+        let transcript = child.join("source.jsonl");
+        if agent == "codex" {
+            fs::write(&transcript,format!("{}\n{}\n",json!({"type":"session_meta","payload":{"id":native,"cwd":child}}),json!({"type":"event_msg","payload":{"type":"plan_update","plan":[{"step":"AP-01 Parent task","status":"completed"}]}}))).unwrap();
+        }
+        let event = if agent == "codex" {
+            json!({"cwd":child,"session_id":"native","transcript_path":transcript})
+        } else {
+            json!({"cwd":child,"session_id":"native","todos":[{"content":"AP-01 Parent task","status":"completed"}]})
+        };
+        assert!(run_bridge(&child, agent, event).status.success());
+        assert!(child.join(".agent-progress/passive-root").is_file());
+        let stream = if agent == "codex" {
+            transcript
+        } else {
+            let session = uuid::Uuid::new_v5(
+                &uuid::Uuid::NAMESPACE_URL,
+                format!("agent-progress:{agent}:native").as_bytes(),
+            );
+            child.join(format!(".agent-progress/bridges/{agent}-{session}.jsonl"))
+        };
+        for phase in ["connected", "removed"] {
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_ap"))
+                .args(["follow", "--rollout"])
+                .arg(&stream)
+                .args(["--once", "--codex-home"])
+                .arg(&child)
+                .current_dir(&child)
+                .env("HERDR_ENV", "0")
+                .env_remove("AP_TERMINAL_SLOT")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{agent}/{phase}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let snapshot: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(snapshot["overall"].is_null(), "{agent}/{phase}");
+            assert!(
+                !parent
+                    .path()
+                    .join(format!(".agent-progress/project-{product_id}.json"))
+                    .exists()
+            );
+            if phase == "connected" {
+                connection::manage_agent(&child, "remove", false, agent).unwrap();
+            }
+        }
+        let sibling = parent.path().join("unconfigured");
+        fs::create_dir(&sibling).unwrap();
+        assert_eq!(
+            agent_progress::project::Project::discover(&sibling)
+                .unwrap()
+                .unwrap()
+                .root(),
+            parent.path().canonicalize().unwrap()
+        );
+    }
+}
+
+#[test]
+fn concurrent_first_native_hooks_keep_the_passive_boundary_and_all_events() {
+    use serde_json::json;
+    use std::sync::{Arc, Barrier};
+    for round in 0..3 {
+        let parent = tempdir().unwrap();
+        let child = parent.path().join(format!("child-{round}"));
+        fs::create_dir(&child).unwrap();
+        fs::create_dir_all(child.join(".agent-progress/bridges")).unwrap();
+        fs::write(parent.path().join("ap.project.json"),json!({"schema":1,"project_id":uuid::Uuid::new_v4(),"objective":"Parent","roadmap":"plan.md"}).to_string()).unwrap();
+        fs::write(parent.path().join("plan.md"), "- [ ] AP-01 Parent task\n").unwrap();
+        let gate = Arc::new(Barrier::new(8));
+        std::thread::scope(|scope| {
+            let tasks=(0..8).map(|i|{
+                let gate=gate.clone();let child=child.clone();
+                scope.spawn(move || {
+                    let event=json!({"cwd":child,"session_id":format!("parallel-{i}"),"todos":[{"content":"AP-01 Parent task","status":"completed"}]});
+                    gate.wait();
+                    agent_progress::bridge::ingest("claude",&event,Some(&child))
+                })
+            }).collect::<Vec<_>>();
+            for task in tasks {
+                assert!(task.join().unwrap().is_ok());
+            }
+        });
+        assert!(
+            agent_progress::project::Project::discover(&child)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            fs::read_dir(child.join(".agent-progress/bridges"))
+                .unwrap()
+                .filter(|e| e
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".jsonl"))
+                .count(),
+            8
+        );
+        assert!(!parent.path().join(".agent-progress").exists());
+    }
+}
+
+#[test]
 fn malformed_manifests_and_foreign_native_events_are_not_hidden_as_passive_projects() {
     use serde_json::json;
     let root = tempdir().unwrap();

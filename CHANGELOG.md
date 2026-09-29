@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.3 — 2026-09-30
+
+- Prevent a manifest-free child project's native plan from being projected onto an
+  ancestor product declaration. Existing product roots still own their declared plans.
+- Persist a small passive-root marker when native input is received so historical
+  sessions remain isolated after connector removal; managed connector receipts and
+  nested Git roots also stop accidental ancestor selection.
+- Concurrent first native hooks accept the same verified marker without losing an
+  event; changed or unsafe marker bytes still fail closed.
+- Preserve existing parent progress without automatic state rewrites. Exact nested
+  three-agent fixtures cover start, follow and post-removal reads.
+
 ## 1.2.2 — 2026-09-30
 
 - Allow passive Codex/Claude/OpenCode project hooks without creating ap.project.json;

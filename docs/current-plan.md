@@ -1,5 +1,23 @@
 # Current release plan
 
+## Focused ap skills — 2026-09-30
+
+- [x] [AP-06/skill-split] Split connection, theme and recovery into separately invokable skills while retaining the existing `$ap` entrypoint.
+- [x] [AP-09/skill-split] Validate source and local installed copies against ap 1.2.4 help and the skill validator.
+- [x] [AP-19/skill-split] Update README installation and invocation guidance; record local installation state.
+
+`skills/ap-connect`, `skills/ap-theme` and `skills/ap-recover` are standalone
+Codex skills. The existing `skills/ap` keeps its detailed references so earlier
+single-skill installations continue to work. The four source folders passed
+skill-creator validation; the locally installed copies matched the source
+byte-for-byte and passed the same validation. The installed ap 1.2.4 help was
+checked for the documented connection, doctor, shell, config and product
+commands. The existing local `$ap` matched the main source before replacement;
+its prior copy is retained at `/Users/justn/.codex/ap-skill-backup.Xtn6Et`.
+The three new names appeared in the next Codex turn's available-skill catalog.
+No new binary package or GitHub release was published; task-level behavior
+of each new skill has not been exercised separately.
+
 ## Connection lock stability — 2026-09-30
 
 - [x] [AP-09/connection-lock] Retry brief project-connection lock contention without weakening receipt/content checks.

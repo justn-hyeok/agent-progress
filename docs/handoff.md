@@ -1,5 +1,15 @@
 # Release handoff
 
+Unreleased skill split: `$ap-connect`, `$ap-theme` and `$ap-recover` are now
+separately invokable source skills, with `$ap` retained as a compatible general
+entrypoint. README explains all four. The four source and installed folders
+passed validation and matched byte-for-byte; local ap 1.2.4 help matched the
+documented commands. Installed `$ap` had matched the published main source
+before the update and was backed up. The new names appeared in the next Codex
+turn's skill catalog. No new binary release was published. Individual skill
+workflows have not been exercised separately. See the first section of
+`docs/current-plan.md` for exact local evidence and next status.
+
 1.2.4 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.4.
 Tag/source 8173d7e86ac9d90afe1cf29432ae5c81c177f4f5 passed Rust CI.
 Homebrew formula 6484740d754993177841c0e2862e5398a14b4e35 passed install/Rust CI.

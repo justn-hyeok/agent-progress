@@ -98,22 +98,30 @@ Claude·OpenCode에는 프로젝트 연결 훅이 필요합니다. 에이전트�
 
 Claude Code와 OpenCode도 설정 적용 후 훅·플러그인을 읽는 세션에서 작업합니다. 연결 설정은 프로젝트 안에서만 관리하며 에이전트 전역 설정은 바꾸지 않습니다. [연결 조건과 진단](docs/operations.md)을 참고하세요.
 
-## `$ap` 스킬
+## 에이전트 스킬
 
-에이전트에게 연결·테마·복구를 맡기려면 [ap 스킬](skills/ap/SKILL.md)을 설치하세요. **앱의 Homebrew 설치와 스킬 설치는 별개입니다.**
+에이전트에게 진행 창·연결·테마·복구를 맡기려면 필요한 스킬을 설치하세요. **앱의 Homebrew 설치와 스킬 설치는 별개입니다.** `$ap`는 기존 호출을 유지하는 기본 진입점이며, 세부 작업은 각각 독립 호출할 수 있습니다.
+
+| 스킬 | 맡는 작업 |
+|---|---|
+| [`$ap`](skills/ap/SKILL.md) | 기존 계획을 진행 창에 표시하고 일반 요청을 연결·테마·복구로 안내 |
+| [`$ap-connect`](skills/ap-connect/SKILL.md) | 에이전트 연결, 자동 창 열기, 위치 변경, 정확한 세션 진단 |
+| [`$ap-theme`](skills/ap-theme/SKILL.md) | 색상 프리셋, 밝기, 상태별 색, YAML 테마 |
+| [`$ap-recover`](skills/ap-recover/SKILL.md) | 저장된 진행 상황 복귀, 근거, 백업·복원·이동 |
 
 Codex에게 다음처럼 요청하면 됩니다.
 
 ```text
-https://github.com/justn-hyeok/agent-progress/tree/main/skills/ap 스킬을 설치해줘.
+https://github.com/justn-hyeok/agent-progress/tree/main/skills 의 ap, ap-connect, ap-theme, ap-recover 스킬을 설치해줘. 기존 같은 이름의 스킬이 있으면 먼저 내용을 비교해줘.
 ```
 
-또는 저장소의 `skills/ap` 폴더 전체를 Codex의 skills 디렉터리(기본 `~/.codex/skills/ap`)로 복사합니다. 기존 같은 이름의 스킬이 있다면 먼저 내용을 확인하세요. 설치 후 다음 턴부터 호출할 수 있습니다.
+또는 저장소의 각 스킬 폴더 전체를 Codex의 skills 디렉터리(기본 `~/.codex/skills/`) 아래 같은 이름으로 설치합니다. 기존 `$ap`만 설치한 환경도 그대로 사용할 수 있습니다. 설치 후 다음 턴부터 새 스킬을 호출할 수 있습니다.
 
 ```text
 $ap 이 프로젝트의 기존 계획을 진행 창에 연결해줘.
-$ap 배경을 좀 더 밝게 하고 위쪽에 띄워줘.
-$ap 연결이 끊긴 이유를 확인하고 복구해줘.
+$ap-connect 이 프로젝트 계획을 연결하고 진행 창을 위쪽에 띄워줘.
+$ap-theme 배경을 좀 더 밝게 하고 막힘 상태 색을 바꿔줘.
+$ap-recover 저장된 진행 상황과 근거를 확인하고 이어서 할 일을 알려줘.
 ```
 
 스킬은 기존 목표와 계획을 유지합니다. 별도 체크리스트 등록이나 진행률을 맞추기 위한 완료 처리를 요구하지 않습니다.
@@ -156,7 +164,7 @@ ap open
 ap config init-yaml
 ```
 
-생성된 `.agent-progress/ui.yaml`에서 프리셋 상속, 색상별 덮어쓰기, 작업 중·대기·막힘·일시 중지·오류·완료·빈 상태의 색을 설정할 수 있습니다. [YAML 예제](docs/theme-example.yaml)와 [설정 설명](skills/ap/references/themes.md)을 참고하세요. YAML은 기존 `ui.json`보다 우선하며, 잘못된 편집 중에는 실행 중 창의 마지막 정상 색을 유지합니다.
+생성된 `.agent-progress/ui.yaml`에서 프리셋 상속, 색상별 덮어쓰기, 작업 중·대기·막힘·일시 중지·오류·완료·빈 상태의 색을 설정할 수 있습니다. [YAML 예제](docs/theme-example.yaml)와 [테마 스킬](skills/ap-theme/SKILL.md)을 참고하세요. YAML은 기존 `ui.json`보다 우선하며, 잘못된 편집 중에는 실행 중 창의 마지막 정상 색을 유지합니다.
 
 ## 복귀와 진단
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "ap · Agent Progress"
-  short_description: "Connect passive progress panes, themes and recovery"
-  default_prompt: "Use $ap to connect this project's existing agent plan to a progress pane and verify the connection."
+  short_description: "Show the current agent plan in a passive progress pane"
+  default_prompt: "Use $ap to show this project's existing agent plan in a passive progress pane."

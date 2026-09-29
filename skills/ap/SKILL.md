@@ -1,6 +1,6 @@
 ---
 name: ap
-description: Use the agent-progress ap CLI to show an existing coding-agent goal and plan in a passive progress pane, configure project-local connections or themes, and diagnose or recover progress state. Use when the user requests ap or agent-progress; ordinary coding or a generic progress update alone does not require it.
+description: Show an existing coding-agent goal and plan in an agent-progress pane, or route a general ap request. For focused setup, colors, or recovery, use ap-connect, ap-theme, or ap-recover. Ordinary coding or a generic progress update alone does not require it.
 ---
 
 # ap — agent-progress
@@ -69,10 +69,13 @@ are not silently cancelled. Never mark unverified work complete to improve the p
 
 ## Task-specific actions
 
-- Connection, automatic opening, placement and exact-session diagnosis:
-  [connection.md](references/connection.md).
-- Presets, brightness, YAML and hot reload: [themes.md](references/themes.md).
-- Resume, evidence, backup/restore and portable state: [recovery.md](references/recovery.md).
+- Connection, automatic opening, placement and exact-session diagnosis: use
+  `$ap-connect` when installed; this standalone skill retains
+  [connection.md](references/connection.md) for existing `$ap` installations.
+- Presets, brightness, YAML and hot reload: use `$ap-theme` when installed;
+  standalone details remain in [themes.md](references/themes.md).
+- Resume, evidence, backup/restore and portable state: use `$ap-recover` when
+  installed; standalone details remain in [recovery.md](references/recovery.md).
 
 Apply only the requested changes. Preserve existing plans, project data and user settings.
 Do not write raw transcripts, credentials or unrelated conversation into progress evidence.

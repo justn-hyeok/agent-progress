@@ -1,0 +1,4 @@
+interface:
+  display_name: "ap · Theme"
+  short_description: "Tune pane presets, brightness and YAML state colors"
+  default_prompt: "Use $ap-theme to adjust this project's progress-pane colors and verify the result."

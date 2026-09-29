@@ -1,0 +1,4 @@
+interface:
+  display_name: "ap · Connect"
+  short_description: "Connect and diagnose native agent progress panes"
+  default_prompt: "Use $ap-connect to connect this project's existing agent plan and verify the exact source."

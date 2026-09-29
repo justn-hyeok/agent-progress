@@ -1,0 +1,4 @@
+interface:
+  display_name: "ap · Recover"
+  short_description: "Resume, verify and restore saved progress safely"
+  default_prompt: "Use $ap-recover to inspect this project's saved progress and recover the requested state."

@@ -4,7 +4,7 @@
 
 - [x] [AP-19/skill-package] Include `$ap` and the three focused skills in the 1.2.5 archive and Homebrew formula.
 - [x] [AP-09/skill-release-check] Verify the source, package checksum, exact skill bytes, local update/rollback and terminal fixtures.
-- [>] [AP-19/skill-release] Publish the matching 1.2.5 tag, assets and Homebrew formula, then verify the public install.
+- [x] [AP-19/skill-release] Publish the matching 1.2.5 tag, assets and Homebrew formula, then verify the public install.
 
 Candidate archive: `agent-progress-1.2.5-macos-arm64.tar.gz`, SHA-256
 `01af4d0d6327aeda74f41aed53e0713c27d80fd98d05a3451abcd8ac0cc2ed68`.
@@ -18,6 +18,19 @@ rolled back to 1.2.4, and uninstalled cleanly. Full package smoke reached
 real Codex and Claude native producers, then OpenCode's first model request
 timed out at 120 seconds; no OpenCode live result is claimed for this release.
 The released binary logic is unchanged from 1.2.4.
+Published release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.5.
+The annotated tag resolves to source commit b9e8064d845164662698012464d923cbecfb6415;
+its Rust CI passed (36612926812), as did the source push CI (36612630502).
+The public archive and checksum asset matched the local candidate SHA-256.
+Formula commit a303efa675b4ec1a1879aac68a843c80c57c7516 passed Homebrew
+install CI (36613053687) and Rust CI (36613051967). This Mac upgraded via
+Homebrew to 1.2.5, and the
+installed binary and four `share/agent-progress/skills` folders matched the
+verified source bytes. `brew test`, `brew audit --strict`, installed doctor
+`--shell zsh --strict` and local Codex skill validation passed. Local Codex
+skills were backed up and updated to the matching 1.2.5 source. Homebrew's
+automatic cleanup removed the older local Cellar copies; project data and
+running panes were not changed.
 
 ## Focused ap skills — 2026-09-30
 
@@ -34,8 +47,8 @@ checked for the documented connection, doctor, shell, config and product
 commands. The existing local `$ap` matched the main source before replacement;
 its prior copy is retained at `/Users/justn/.codex/ap-skill-backup.Xtn6Et`.
 The three new names appeared in the next Codex turn's available-skill catalog.
-No new binary package or GitHub release was published; task-level behavior
-of each new skill has not been exercised separately.
+The later 1.2.5 package/release is recorded above. Task-level behavior of
+each new skill has not been exercised separately.
 
 ## Connection lock stability — 2026-09-30
 

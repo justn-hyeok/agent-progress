@@ -1,20 +1,24 @@
 # Release handoff
 
-1.2.5 skill-bundle candidate is prepared for publication. The archive now
-contains all four Codex skills; the Homebrew formula will expose them under
-`share/agent-progress/skills`. Exact archive update/rollback, checksum,
-reproducibility, Rust/PTY and skill validation passed locally. OpenCode's
-optional live producer request timed out; see the first section of
-`docs/current-plan.md`. Public tag, assets, formula install and CI remain to
-be verified.
+1.2.5 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.5.
+Its source/tag commit b9e8064d845164662698012464d923cbecfb6415 passed
+Rust CI; formula a303efa675b4ec1a1879aac68a843c80c57c7516 passed
+Homebrew install and Rust CI. The public archive SHA-256 is
+01af4d0d6327aeda74f41aed53e0713c27d80fd98d05a3451abcd8ac0cc2ed68.
+All four Codex skills are bundled in the archive and installed by Homebrew
+under `share/agent-progress/skills`; local installed files matched source.
+Exact package update/rollback, reproducibility, Rust/PTY, `brew test/audit`
+and installed doctor passed. Local Codex skills were backed up/upgraded.
+OpenCode's optional live producer request timed out; no current OpenCode live
+result is claimed. See the first section of `docs/current-plan.md`.
 
-Unreleased skill split: `$ap-connect`, `$ap-theme` and `$ap-recover` are now
+Skill split: `$ap-connect`, `$ap-theme` and `$ap-recover` are now
 separately invokable source skills, with `$ap` retained as a compatible general
 entrypoint. README explains all four. The four source and installed folders
 passed validation and matched byte-for-byte; local ap 1.2.4 help matched the
 documented commands. Installed `$ap` had matched the published main source
 before the update and was backed up. The new names appeared in the next Codex
-turn's skill catalog. No new binary release was published. Individual skill
+turn's skill catalog. Individual skill
 workflows have not been exercised separately. See the first section of
 `docs/current-plan.md` for exact local evidence and next status.
 

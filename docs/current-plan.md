@@ -4,7 +4,7 @@
 
 - [x] [AP-09/native-recheck] Recheck installed Codex, Claude Code and OpenCode with actual native inputs.
 - [x] [AP-06/daemon] Verify the launcher connection fix with shared-server clients, new threads and resume.
-- [ ] [AP-19/connection-release] Verify the final connection fix and update support documentation and release assets.
+- [x] [AP-19/connection-release] Verify the final connection fix and update support documentation and release assets.
 
 Claude Code 2.1.274 and OpenCode 1.18.30 passed native task/todo updates, restricted fixture
 file work and new-process resume against ap 1.1.0. Codex 0.157.1 passed native Plan/report,
@@ -18,7 +18,11 @@ implemented in agent-progress itself; Herdr source changes were not needed for t
 launcher route. Plain shared `codex` startup outside that route is not claimed fixed.
 Final native lifecycle checks passed: two distinct client sessions in one project;
 cross-directory resume; new thread reusing the observer; the other source unchanged;
-focus and 28/12 pane heights retained. Package publication remains in progress.
+focus and 28/12 pane heights retained. 89 Rust tests, fmt/Clippy, PTY checks and exact
+archive install/removal passed; update/rollback also passed on the prior same-version
+candidate. Final tag commit 78130cd9a706b05f135d93635af5b4de72640672 passed GitHub CI.
+Release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.1.1
+Archive SHA-256: 18fad7f074fa1bb615dd78028401c658572aed9ca99d8ff56fba0c316580796d.
 Apple signing/notarization remain excluded.
 
 Agent skill follow-up completed: skills/ap provides the $ap entrypoint and focused

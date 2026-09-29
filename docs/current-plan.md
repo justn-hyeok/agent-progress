@@ -3,7 +3,7 @@
 ## Connection lock stability — 2026-09-30
 
 - [x] [AP-09/connection-lock] Retry brief project-connection lock contention without weakening receipt/content checks.
-- [ ] [AP-19/connection-hotfix-release] Verify and publish a separate 1.2.4 patch release, leaving 1.2.3 tag/assets immutable.
+- [x] [AP-19/connection-hotfix-release] Verify and publish a separate 1.2.4 patch release, leaving 1.2.3 tag/assets immutable.
 
 Latest 1.2.3 documentation-only CI repeated a transient connection-lock busy failure
 seen in earlier release CI. The immutable source/tag and Homebrew CI passed; this
@@ -13,6 +13,16 @@ scenarios, source skill validation, exact archive install/uninstall and byte-ide
 repackaging passed. Codex/Claude/OpenCode lock fixtures each waited for and recovered
 from a short lock; existing receipt, content and symlink checks remained. SHA-256:
 1261c3a31a1781bb40e70d6d50c41f4486d2d5861719134d59b4c5ae95e23106.
+Published release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.4.
+Tag/source 8173d7e86ac9d90afe1cf29432ae5c81c177f4f5 passed Rust CI
+(source run 36607607178; tag run 36608077826). Homebrew formula
+6484740d754993177841c0e2862e5398a14b4e35 passed install CI 36608169327
+and Rust CI 36608169336. Downloaded archive matched the SHA-256 above.
+This Mac upgraded via brew to 1.2.4; brew test/audit and installed doctor --strict
+passed. Installed binary matched the tested release binary. The global ap skill was
+backed up/validated against its prior-source baseline, and managed zsh setup stayed
+current without rc changes. Prior managed binary versions and live user panes were
+retained. The 1.2.3 release note now points to this connection-lock fix.
 
 ## Nested passive-project isolation — 2026-09-30
 

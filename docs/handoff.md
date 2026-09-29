@@ -1,5 +1,14 @@
 # Release handoff
 
+1.2.4 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.4.
+Tag/source 8173d7e86ac9d90afe1cf29432ae5c81c177f4f5 passed Rust CI.
+Homebrew formula 6484740d754993177841c0e2862e5398a14b4e35 passed install/Rust CI.
+Archive SHA-256 is 1261c3a31a1781bb40e70d6d50c41f4486d2d5861719134d59b4c5ae95e23106.
+Published assets, exact package installation, local brew upgrade/test/audit, installed binary
+hash, doctor --strict and the installed ap skill were verified. Managed zsh setup remained
+current without editing rc; live user panes and credentials were retained. The v1.2.3
+release note names the intermittent connection lock issue and links this fix.
+
 1.2.4 hotfix candidate bounds project-local connection lock retries at two seconds.
 Existing receipt, content and symlink checks remain after lock acquisition. The
 documentation-only 1.2.3 CI reproduced a transient macOS lock-busy error that had

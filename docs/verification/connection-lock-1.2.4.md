@@ -23,3 +23,14 @@ Repacking was byte-identical. Archive SHA-256:
 The packaged CLI retained v1.2.3 child/ancestor isolation, current shell states,
 strict doctor behavior and narrow uninstall. Public CI/installation status follows
 the exact 1.2.4 tag and Homebrew formula, without modifying older release tags.
+
+Publication: v1.2.4 resolves to 8173d7e86ac9d90afe1cf29432ae5c81c177f4f5.
+The [source CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36607607178)
+and [tag CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36608077826)
+passed. The downloaded public archive matched the SHA-256 above. Formula commit
+6484740d754993177841c0e2862e5398a14b4e35 passed
+[Homebrew install CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36608169327)
+and [Rust CI](https://github.com/justn-hyeok/agent-progress/actions/runs/36608169336).
+Local brew upgrade/test/audit and installed doctor --strict passed; binary hash matched
+the tested release build. The installed ap skill was updated only from a matching prior
+baseline and validated, while the managed zsh block was already current and left intact.

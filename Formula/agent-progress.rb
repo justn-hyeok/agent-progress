@@ -1,8 +1,8 @@
 class AgentProgress < Formula
   desc "Passive terminal progress dashboard for coding agents"
   homepage "https://github.com/justn-hyeok/agent-progress"
-  url "https://github.com/justn-hyeok/agent-progress/releases/download/v1.2.1/agent-progress-1.2.1-macos-arm64.tar.gz"
-  sha256 "d4fedf795f36f6fd78c3e367dcc00caf2c3a1df51832b16becfeb2160a4588ef"
+  url "https://github.com/justn-hyeok/agent-progress/releases/download/v1.2.2/agent-progress-1.2.2-macos-arm64.tar.gz"
+  sha256 "a26b942618b62ea4ff3da97b64155d2a7649abdf50c58afc5a826b66505b1e43"
 
   depends_on arch: :arm64
   depends_on :macos

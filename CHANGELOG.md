@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5 — 2026-09-30
+
+- Split the Codex skill into `$ap-connect`, `$ap-theme`, and `$ap-recover`, while
+  keeping `$ap` compatible with existing single-skill installations.
+- Include all four skills in the macOS release archive and Homebrew package so
+  they can be installed separately from the `ap` binary.
+
 ## 1.2.4 — 2026-09-30
 
 - Wait briefly for concurrent project connection setup/removal locks before reporting

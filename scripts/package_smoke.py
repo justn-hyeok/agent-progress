@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='ap-package-smoke-') as tmp:
     update=temp/'update';shutil.copytree(package,update)
     shutil.copy2(root/'target/package-smoke/release/ap',update/'ap')
     (update/'VERSION').write_text(version+'\n')
-    (update/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(update.iterdir()) if p.is_file() and p.name!='SHA256SUMS'))
+    (update/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(update).as_posix()}\n' for p in sorted(update.rglob('*')) if p.is_file() and p.name!='SHA256SUMS'))
     run(['sh',update/'install.sh','--prefix',prefix])
     assert version in run([ap,'--version'])
     assert json.loads(run([ap,'product','resume'],cwd=project))['counts']==[1,2]

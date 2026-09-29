@@ -10,6 +10,10 @@ brew install justn-hyeok/agent-progress/agent-progress
 ```
 
 Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치한다.
+압축 파일의 `skills/`에는 `$ap`, `$ap-connect`, `$ap-theme`, `$ap-recover`
+Codex 스킬이 들어 있다. Homebrew는 이를 formula의 `share/agent-progress/skills/`에
+보관하며 사용자 Codex 스킬 디렉터리를 자동 변경하지 않는다. 필요한 폴더를
+내용 확인 후 `~/.codex/skills/`에 따로 설치한다.
 Rust, Node, Herdr는 설치 의존성이 아니다. macOS arm64 전용이다.
 Herdr 밖의 자동 진행 창에는 선택적으로 tmux가 필요하다(`brew install tmux`).
 셸 연결은 `ap shell install --shell zsh|bash|fish`로 설치하며 원본 실행 파일을 바꾸지 않는다.
@@ -41,5 +45,5 @@ release 바이너리와 tar.gz/checksum을 만든다. 실행 시 Rust·Node·서
 동일 버전의 다른 바이너리, 무관한 bin/ap, symlink 관리 디렉터리는 거부한다.
 
 배포물은 [GitHub Releases](https://github.com/justn-hyeok/agent-progress/releases)에
-tar.gz와 SHA-256 파일로 제공한다. 서명/공증에는 Apple Developer 계정이 필요하다.
+스킬을 포함한 tar.gz와 SHA-256 파일로 제공한다. 서명/공증에는 Apple Developer 계정이 필요하다.
 설치 자동 검사는 임시 prefix에서 수행한다.

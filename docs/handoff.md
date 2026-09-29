@@ -1,5 +1,13 @@
 # Release handoff
 
+1.2.5 skill-bundle candidate is prepared for publication. The archive now
+contains all four Codex skills; the Homebrew formula will expose them under
+`share/agent-progress/skills`. Exact archive update/rollback, checksum,
+reproducibility, Rust/PTY and skill validation passed locally. OpenCode's
+optional live producer request timed out; see the first section of
+`docs/current-plan.md`. Public tag, assets, formula install and CI remain to
+be verified.
+
 Unreleased skill split: `$ap-connect`, `$ap-theme` and `$ap-recover` are now
 separately invokable source skills, with `$ap` retained as a compatible general
 entrypoint. README explains all four. The four source and installed folders

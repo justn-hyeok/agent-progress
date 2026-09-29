@@ -1,5 +1,24 @@
 # Current release plan
 
+## Skill bundle release — 2026-09-30
+
+- [x] [AP-19/skill-package] Include `$ap` and the three focused skills in the 1.2.5 archive and Homebrew formula.
+- [x] [AP-09/skill-release-check] Verify the source, package checksum, exact skill bytes, local update/rollback and terminal fixtures.
+- [>] [AP-19/skill-release] Publish the matching 1.2.5 tag, assets and Homebrew formula, then verify the public install.
+
+Candidate archive: `agent-progress-1.2.5-macos-arm64.tar.gz`, SHA-256
+`01af4d0d6327aeda74f41aed53e0713c27d80fd98d05a3451abcd8ac0cc2ed68`.
+The reproducible repack was byte-identical. Rust tests, fmt, Clippy, skill
+validation, release-binary PTY presentation and terminal fixtures passed with
+the same `HERDR_ENV=0` isolation used by CI. The first local test attempt
+inherited the active Herdr environment and its bridge fixtures failed; the
+documented CI environment passed. The exact archive contained all four skills
+and passed member checksums. An isolated install upgraded 1.2.4 to 1.2.5,
+rolled back to 1.2.4, and uninstalled cleanly. Full package smoke reached
+real Codex and Claude native producers, then OpenCode's first model request
+timed out at 120 seconds; no OpenCode live result is claimed for this release.
+The released binary logic is unchanged from 1.2.4.
+
 ## Focused ap skills — 2026-09-30
 
 - [x] [AP-06/skill-split] Split connection, theme and recovery into separately invokable skills while retaining the existing `$ap` entrypoint.

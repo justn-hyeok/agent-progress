@@ -115,7 +115,7 @@ Codex에게 다음처럼 요청하면 됩니다.
 https://github.com/justn-hyeok/agent-progress/tree/main/skills 의 ap, ap-connect, ap-theme, ap-recover 스킬을 설치해줘. 기존 같은 이름의 스킬이 있으면 먼저 내용을 비교해줘.
 ```
 
-또는 저장소의 각 스킬 폴더 전체를 Codex의 skills 디렉터리(기본 `~/.codex/skills/`) 아래 같은 이름으로 설치합니다. 기존 `$ap`만 설치한 환경도 그대로 사용할 수 있습니다. 설치 후 다음 턴부터 새 스킬을 호출할 수 있습니다.
+또는 저장소나 릴리스 압축 파일의 `skills/`에서 각 스킬 폴더 전체를 Codex의 skills 디렉터리(기본 `~/.codex/skills/`) 아래 같은 이름으로 설치합니다. Homebrew는 스킬을 `share/agent-progress/skills/`에 보관하며 자동으로 사용자 스킬 설정을 바꾸지 않습니다. 기존 `$ap`만 설치한 환경도 그대로 사용할 수 있습니다. 설치 후 다음 턴부터 새 스킬을 호출할 수 있습니다.
 
 ```text
 $ap 이 프로젝트의 기존 계획을 진행 창에 연결해줘.

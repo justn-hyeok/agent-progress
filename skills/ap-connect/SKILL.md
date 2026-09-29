@@ -10,7 +10,7 @@ the user to register a task, copy a session ID, or maintain a second checklist.
 The pane reflects reports; it does not supervise work or certify completion.
 
 Check `ap --version` and relevant `--help` first. These instructions describe
-ap 1.2.4; check preview and doctor fields before relying on them. If the binary
+ap 1.2.5; check preview and doctor fields before relying on them. If the binary
 is missing, install it only when installation is within the request. On macOS
 Apple Silicon, the published Homebrew path is:
 

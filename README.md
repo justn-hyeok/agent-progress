@@ -29,6 +29,22 @@ brew uninstall agent-progress
 
 ## 에이전트 연결
 
+zsh에서 평소처럼 `codex`를 입력해 자동 연결하려면 한 번 설치합니다.
+
+```sh
+ap shell install
+```
+
+새 터미널에서 `codex` 또는 `codex resume`를 사용하면 됩니다. Herdr 안에서는
+연결 관찰기를 거쳐 원래 Codex를 실행하고, 밖에서는 원래 명령으로 실행합니다.
+`codex exec`, `login`, `mcp` 같은 비대화형·관리 명령도 원래 Codex로 직접 전달합니다.
+`ap shell status`로 설정을 확인하고 `ap shell remove`로 제거합니다. 기존 rc 파일은
+백업하며 사용자 편집과 원래 실행 파일은 보존합니다. 기존 `codex` 별칭·함수는
+덮어쓰지 않습니다. 앱 제거 전 이 설정도 제거하세요.
+
+셸을 거치지 않는 직접 프로그램 호출은 이 함수의 대상이 아닙니다. 원래 실행이
+필요할 때는 `command codex`를 사용합니다. zsh 외 셸의 설치는 아직 지원하지 않습니다.
+
 Herdr 안에서 작업할 프로젝트로 이동한 뒤, 사용할 에이전트를 연결합니다. Codex의 경우:
 
 ```sh
@@ -124,7 +140,7 @@ Herdr 밖에서도 파일 모드, 명시한 Codex 세션 기록 읽기, 테마 �
 
 ## 지원과 검증
 
-릴리즈 검증 환경은 macOS 26.6.2 arm64, Herdr 0.9.0, Codex CLI 0.157.1와 공유 서버 0.158.0, Claude Code 2.1.274, OpenCode 1.18.30입니다. 다른 OS·아키텍처와 에이전트 버전의 호환성은 별도로 확인해야 합니다. Codex 공유 서버의 자동 창 연결은 위의 `ap launch --agent codex` 경로에서 검증합니다.
+릴리즈 검증 환경은 macOS 26.6.2 arm64, Herdr 0.9.0, Codex CLI 0.157.1와 공유 서버 0.158.0, Claude Code 2.1.274, OpenCode 1.18.30입니다. 다른 OS·아키텍처와 에이전트 버전의 호환성은 별도로 확인해야 합니다. Codex 자동 연결은 `ap launch --agent codex`와 그 경로로 전달하는 zsh 연결 함수를 사용합니다.
 
 Apple Developer 서명·공증은 없습니다. 로컬 세션 원문, 인증 파일과 사용자 화면 캡처는 공개 저장소에 포함하지 않습니다.
 

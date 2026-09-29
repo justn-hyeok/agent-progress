@@ -29,6 +29,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Optional zsh integration for typing codex directly; backs up and preserves rc content.
+    Shell {
+        #[arg(value_parser=["preview","status","install","remove"],default_value="preview")]
+        action: String,
+        #[arg(long)]
+        rc: Option<PathBuf>,
+    },
     /// Project-local colors, placement and automatic Herdr observation.
     Config {
         #[command(subcommand)]
@@ -310,6 +317,16 @@ fn run(cli: Cli) -> Result<()> {
         once: false,
     });
     let command = match command {
+        Command::Shell { action, rc } => {
+            let rc = rc
+                .map(Ok)
+                .unwrap_or_else(agent_progress::shell::default_rc)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&agent_progress::shell::manage(&action, &rc)?)?
+            );
+            return Ok(());
+        }
         Command::Config { action } => {
             let cwd = std::env::current_dir()?;
             let project = agent_progress::project::Project::discover(&cwd)?;

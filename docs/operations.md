@@ -1,5 +1,22 @@
 # 세 에이전트 제품 사용과 복구
 
+## 1.2.0 일반 codex 명령 연결
+
+`ap shell preview`는 zsh 설정에 추가할 블록을 보여줍니다. `ap shell install`은
+`ZDOTDIR`이 있으면 그 디렉터리, 아니면 HOME의 `.zshrc`를 백업하고 관리 블록을
+추가합니다. `--rc /명시적/파일`로 대상을 지정할 수 있습니다. 심볼릭 링크 파일,
+중복·불완전하거나 편집된 관리 블록은 보존하고 거부합니다. 설치는 멱등적입니다.
+
+새 셸에서 `codex`·`codex resume`는 Herdr 안에서 `ap launch`로 전달합니다.
+원래 실행 파일은 교체하지 않으며, Rust 실행기가 셸 함수를 다시 부르지 않아
+재귀가 발생하지 않습니다. Herdr 밖, ap가 없는 PATH, 비대화형·관리 하위 명령은
+원래 Codex로 실행합니다. 기존 별칭·함수는 우선합니다. native 프로젝트 신뢰나
+로그인 요구를 우회하지 않습니다.
+
+`ap shell remove`는 정확한 관리 블록만 제거해 다른 사용자 편집을 유지합니다.
+새 셸에 적용되며 현재 셸에서 이미 로드한 함수는 `unfunction codex`로 지울 수
+있습니다. 원래 실행을 즉시 호출하려면 `command codex`를 사용합니다.
+
 ## 1.1.0 YAML·프리셋·배경
 
 `ap config presets`로 Signal/Forest/Ocean/Amber와 사용자 프리셋을 확인한다.

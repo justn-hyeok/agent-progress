@@ -12,5 +12,6 @@ pub mod project;
 pub mod recovery;
 pub mod runner;
 pub mod settings;
+pub mod shell;
 pub mod store;
 pub mod ui;

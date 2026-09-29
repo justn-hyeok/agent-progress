@@ -1,5 +1,12 @@
 # Release handoff
 
+1.2.0 adds optional zsh command setup with preview/install/status/remove. After installation
+in a new shell, ordinary codex/resume enters the existing launcher inside Herdr; outside
+Herdr and for management/non-interactive commands native execution is preserved. The real
+shell/native-resume path and automatic observer passed; unrelated rc edits and removal
+were tested. Native project trust is preserved. Other shells and direct program invocations
+that bypass shell functions are not claimed supported by this setup.
+
 1.1.1 adds a frontend connection observer for the Codex launcher while retaining the
 shared native server. Two clients, resume, new-thread reuse and layout preservation
 passed live on Codex CLI 0.157.1 / native server 0.158.0. Ephemeral helper threads and

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-09-29
+
+- Opt-in zsh setup with `ap shell preview/install/status/remove` so ordinary interactive
+  `codex` and `codex resume` commands use the existing client connection observer.
+- Native executables, existing aliases/functions and unrelated rc edits are preserved.
+  Setup backs up exact rc bytes, replaces atomically and refuses modified managed blocks.
+- Outside Herdr and for non-interactive/management commands, invoke native Codex directly.
+  Arguments are preserved; `command codex` bypasses the optional shell function.
+
 ## 1.1.1 — 2026-09-29
 
 - Codex launcher observes its own frontend connection to the shared native server

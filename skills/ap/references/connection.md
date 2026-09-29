@@ -16,6 +16,13 @@ The binary has no Apple Developer signing or notarization.
 
 ## Project-local connection
 
+With ap 1.2.0, `ap shell install` optionally adds a managed zsh function so typing
+`codex` or `codex resume` in a new Herdr shell uses `ap launch`. It backs up the rc,
+preserves unrelated content and existing definitions, and offers `ap shell remove`.
+This is user-level shell setup: apply only when the request authorizes that installation.
+It does not replace native binaries or bypass harness trust. Management/non-interactive
+commands and non-Herdr shells use native Codex; `command codex` is the direct escape.
+
 Select the actual native harness (`codex`, `claude` or `opencode`). From the requested
 project, inspect `ap connect preview --agent NAME`. If a connection is needed and the
 request authorizes setup, run `ap connect apply --agent NAME`. Already managed settings

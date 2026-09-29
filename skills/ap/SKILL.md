@@ -12,7 +12,7 @@ not supervise agents or prove that reported work passed verification.
 ## Start from the current project
 
 Check `ap --version` and the relevant command's `--help`; these instructions cover 1.1.0
-and the 1.1.1 shared-server launcher.
+and the 1.1.1 shared-server launcher / 1.2.0 optional zsh command setup.
 If the binary is missing, install it when installation is within the request, using
 [connection.md](references/connection.md). Do not change global agent settings.
 

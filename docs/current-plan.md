@@ -1,5 +1,19 @@
 # Current release plan
 
+## Shell integration — 2026-09-29
+
+- [x] [AP-06/shell] Implement optional zsh install/status/remove with preservation and backup.
+- [x] [AP-09/shell] Verify routing, quoting, native escape, non-interactive passthrough and safe removal in real zsh.
+- [>] [AP-19/shell] Release/install the verified shell integration package.
+
+The user's rc was backed up and updated after isolated tests. No original Codex executable
+was replaced. Existing sessions need a new shell or explicit rc reload. Native project
+trust is not bypassed. Tests cover edited blocks, symlinks, exact original bytes and
+post-install user edits; the public command works without a plan file.
+Actual shell spelling `codex resume` opened the correct native Codex 0.157.1 session
+through server 0.158.0 and automatically opened the observer; focus and 28/12 heights
+were retained. 93 tests passed. Non-interactive command bypass was added after review.
+
 ## Native connection follow-up — 2026-09-29
 
 - [x] [AP-09/native-recheck] Recheck installed Codex, Claude Code and OpenCode with actual native inputs.

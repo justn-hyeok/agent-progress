@@ -15,8 +15,9 @@ inherited the active Herdr environment and its bridge fixtures failed; the
 documented CI environment passed. The exact archive contained all four skills
 and passed member checksums. An isolated install upgraded 1.2.4 to 1.2.5,
 rolled back to 1.2.4, and uninstalled cleanly. Full package smoke reached
-real Codex and Claude native producers, then OpenCode's first model request
-timed out at 120 seconds; no OpenCode live result is claimed for this release.
+real Codex and Claude native producers, then OpenCode's first
+`opencode-go/glm-5.3-flash` model request timed out at 120 seconds. A later
+bounded OpenCode retest is recorded below.
 The released binary logic is unchanged from 1.2.4.
 Published release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.5.
 The annotated tag resolves to source commit b9e8064d845164662698012464d923cbecfb6415;
@@ -31,6 +32,17 @@ verified source bytes. `brew test`, `brew audit --strict`, installed doctor
 skills were backed up and updated to the matching 1.2.5 source. Homebrew's
 automatic cleanup removed the older local Cellar copies; project data and
 running panes were not changed.
+
+Follow-up OpenCode 1.18.30 live check used the installed ap 1.2.5 and
+`opencode-go/gpt-6-luna` in a private disposable project. Native `todowrite`
+was observed at 0/2 → 1/2 → 2/2, with stable task IDs, the same exact session
+resumed in a new process, one bridge stream, and a native test-file edit.
+`ap compatibility --agent opencode` also passed its CLI interface check.
+The model skipped `todowrite` on the first progress prompt (state stayed 0/2);
+one explicit corrective prompt in that same session produced 1/2, and the
+next process completed 2/2. This proves the native connection and state path,
+not reliable tool selection for every prompt or the timed-out flash model.
+Raw session and provider records remain private and outside Git.
 
 ## Focused ap skills — 2026-09-30
 

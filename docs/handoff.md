@@ -9,8 +9,12 @@ All four Codex skills are bundled in the archive and installed by Homebrew
 under `share/agent-progress/skills`; local installed files matched source.
 Exact package update/rollback, reproducibility, Rust/PTY, `brew test/audit`
 and installed doctor passed. Local Codex skills were backed up/upgraded.
-OpenCode's optional live producer request timed out; no current OpenCode live
-result is claimed. See the first section of `docs/current-plan.md`.
+OpenCode's first `glm-5.3-flash` producer request timed out. A subsequent
+installed OpenCode 1.18.30 / `opencode-go/gpt-6-luna` run verified native
+todos 0/2 → 1/2 → 2/2, stable IDs, exact-session new-process resume, and
+test-file edits after one corrective prompt for a skipped tool call. This is
+live connection evidence, not a claim that every model prompt selects tools
+reliably. See the first section of `docs/current-plan.md`.
 
 Skill split: `$ap-connect`, `$ap-theme` and `$ap-recover` are now
 separately invokable source skills, with `$ap` retained as a compatible general

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.4 — 2026-09-30
+
+- Wait briefly for concurrent project connection setup/removal locks before reporting
+  them busy. File contents and receipts are still checked after the lock is acquired;
+  user edits and existing backups remain protected.
+- Address intermittent macOS lock contention observed during sequential connection
+  setup/removal in release CI. A bounded fixture test covers Codex, Claude and OpenCode.
+
 ## 1.2.3 — 2026-09-30
 
 - Prevent a manifest-free child project's native plan from being projected onto an

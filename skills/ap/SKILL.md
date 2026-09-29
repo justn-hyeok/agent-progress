@@ -11,7 +11,7 @@ not supervise agents or prove that reported work passed verification.
 
 ## Start from the current project
 
-Check `ap --version` and the relevant command's `--help`; this skill targets 1.2.3.
+Check `ap --version` and the relevant command's `--help`; this skill targets 1.2.4.
 Check actual preview/doctor fields before assuming an older binary has these contracts.
 If the binary is missing, install it when installation is within the request, using
 [connection.md](references/connection.md). Do not change global agent settings.

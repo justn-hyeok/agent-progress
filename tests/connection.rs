@@ -2,6 +2,40 @@ use agent_progress::connection;
 use std::fs;
 use tempfile::tempdir;
 
+#[test]
+fn connection_setup_waits_for_short_lock_contention_before_applying() {
+    use fs2::FileExt;
+    for agent in ["codex", "claude", "opencode"] {
+        let root = tempdir().unwrap();
+        let storage = root.path().join(".agent-progress");
+        fs::create_dir(&storage).unwrap();
+        let name = if agent == "codex" {
+            "connection.ap-lock".to_owned()
+        } else {
+            format!("connection-{agent}.lock")
+        };
+        let lock = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(storage.join(name))
+            .unwrap();
+        lock.lock_exclusive().unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            FileExt::unlock(&lock).unwrap();
+        });
+        let started = std::time::Instant::now();
+        connection::manage_agent(root.path(), "apply", false, agent).unwrap();
+        release.join().unwrap();
+        assert!(started.elapsed() >= std::time::Duration::from_millis(100));
+        assert_eq!(
+            connection::manage_agent(root.path(), "preview", false, agent).unwrap()["connection_status"],
+            "managed"
+        );
+    }
+}
+
 fn run_bridge(
     root: &std::path::Path,
     agent: &str,

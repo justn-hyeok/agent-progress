@@ -1,5 +1,15 @@
 # Release handoff
 
+1.2.4 hotfix candidate bounds project-local connection lock retries at two seconds.
+Existing receipt, content and symlink checks remain after lock acquisition. The
+documentation-only 1.2.3 CI reproduced a transient macOS lock-busy error that had
+also appeared in earlier release CI. A direct three-agent contention regression
+passes locally. The full local gate passed with 132 Rust tests, fmt/Clippy,
+release-binary tmux/PTY, exact archive install/uninstall and a byte-identical
+repack. Archive SHA-256 is
+1261c3a31a1781bb40e70d6d50c41f4486d2d5861719134d59b4c5ae95e23106.
+Release/installation evidence is pending.
+
 1.2.3 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.3.
 Tag/source e0a0e5f19154d2677015ee418c5cf446f6e63a5f and formula
 f826286b14f3e63026a81d7793d73f42bbf3382f passed Rust/Homebrew CI.

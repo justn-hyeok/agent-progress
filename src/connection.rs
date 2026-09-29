@@ -22,6 +22,22 @@ struct Receipt {
     files: Vec<Edit>,
 }
 
+fn lock_settings(lock: &fs::File, message: &'static str) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Err(error) => return Err(error).context(message),
+        }
+    }
+}
+
 fn executable_path() -> Result<std::path::PathBuf> {
     let actual = std::env::current_exe()?.canonicalize()?;
     // Keep the verified public install symlink in settings so an update changes the
@@ -124,8 +140,7 @@ pub fn manage(root: &Path, action: &str, writes: bool) -> Result<Value> {
         .truncate(false)
         .write(true)
         .open(directory.join("connection.ap-lock"))?;
-    lock.try_lock_exclusive()
-        .context("connection settings are busy")?;
+    lock_settings(&lock, "connection settings are busy")?;
     if action == "remove" {
         let mut receipt: Receipt = serde_json::from_slice(&recovery::read(&receipt_path)?)?;
         ensure!(
@@ -333,7 +348,7 @@ export const AgentProgress = async ({{ directory }}) => {{
         .truncate(false)
         .write(true)
         .open(lock_path)?;
-    lock.try_lock_exclusive().context("settings busy")?;
+    lock_settings(&lock, "settings busy")?;
     if action == "remove" {
         let receipt: Value = serde_json::from_slice(&recovery::read(&receipt_path)?)?;
         ensure!(

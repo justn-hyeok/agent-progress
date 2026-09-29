@@ -1,5 +1,19 @@
 # Current release plan
 
+## Connection lock stability — 2026-09-30
+
+- [x] [AP-09/connection-lock] Retry brief project-connection lock contention without weakening receipt/content checks.
+- [ ] [AP-19/connection-hotfix-release] Verify and publish a separate 1.2.4 patch release, leaving 1.2.3 tag/assets immutable.
+
+Latest 1.2.3 documentation-only CI repeated a transient connection-lock busy failure
+seen in earlier release CI. The immutable source/tag and Homebrew CI passed; this
+follow-up improves the actual CLI setup/remove path rather than only rerunning CI.
+Local gate: 132 Rust tests, fmt/Clippy, release build, tmux/PTY and presentation
+scenarios, source skill validation, exact archive install/uninstall and byte-identical
+repackaging passed. Codex/Claude/OpenCode lock fixtures each waited for and recovered
+from a short lock; existing receipt, content and symlink checks remained. SHA-256:
+1261c3a31a1781bb40e70d6d50c41f4486d2d5861719134d59b4c5ae95e23106.
+
 ## Nested passive-project isolation — 2026-09-30
 
 - [x] [AP-06/passive-boundary] Keep a manifest-free child project separate from its ancestor product plan, including when its own connection is removed.

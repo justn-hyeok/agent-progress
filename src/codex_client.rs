@@ -411,10 +411,7 @@ fn bind(
 ) {
     let result = (|| -> Result<()> {
         let cwd = thread.cwd.context("native thread cwd unavailable")?;
-        ensure!(
-            cwd.canonicalize()?.starts_with(root),
-            "native thread moved outside the source project"
-        );
+        let cwd = cwd.canonicalize()?;
         let mut path = thread.path;
         let deadline = Instant::now() + Duration::from_secs(2);
         while path
@@ -434,7 +431,7 @@ fn bind(
         if selected["session"] != thread.id.to_string() {
             return Ok(());
         }
-        crate::bridge::register_client(pane, owner, thread.id, &path, &cwd, marker)
+        crate::bridge::register_client(pane, owner, thread.id, &path, &cwd, root, marker)
             .context("native client registration failed")?;
         if crate::settings::load_for_cwd(&cwd)?.auto_open
             && std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0")

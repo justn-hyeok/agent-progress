@@ -409,6 +409,7 @@ pub fn register_client(
     session: Uuid,
     rollout: &Path,
     cwd: &Path,
+    launch_root: &Path,
     marker: &Path,
 ) -> Result<()> {
     let rollout = rollout.canonicalize()?;
@@ -463,6 +464,17 @@ pub fn register_client(
         &serde_json::to_vec(&binding)?,
         true,
     )?;
+    let launching_root = Project::discover(launch_root)?
+        .map(|p| p.root().to_owned())
+        .unwrap_or(launch_root.canonicalize()?);
+    if launching_root != binding.cwd {
+        let launching_dir = directory(&launching_root)?;
+        recovery::write(
+            &launching_dir.join(format!("pane-{}.json", recovery::hash(pane.as_bytes()))),
+            &serde_json::to_vec(&binding)?,
+            true,
+        )?;
+    }
     if let Err(error) = herdr::call(&[
         "pane",
         "report-agent-session",
@@ -530,7 +542,7 @@ pub fn lookup(
         "native hook stream identity changed"
     );
     ensure!(
-        binding.cwd.canonicalize()? == root.canonicalize()?,
+        binding.schema == 3 || binding.cwd.canonicalize()? == root.canonicalize()?,
         "native registration project changed"
     );
     if agent != "codex" {

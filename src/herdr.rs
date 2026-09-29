@@ -22,6 +22,8 @@ pub struct Binding {
     pub session: Uuid,
     pub rollout: PathBuf,
     pub cwd: PathBuf,
+    #[serde(default)]
+    pub client_owned: bool,
 }
 
 fn codex_agent() -> String {
@@ -134,6 +136,7 @@ pub fn resolve(pane: &str) -> Result<Binding> {
             kind,
         )?;
         return Ok(Binding {
+            client_owned: false,
             agent: kind.into(),
             pane: pane.into(),
             terminal: registered.terminal,
@@ -164,6 +167,7 @@ pub fn resolve(pane: &str) -> Result<Binding> {
                     "native hook project mismatch"
                 );
                 return Ok(Binding {
+                    client_owned: registered.schema == 3,
                     agent: kind.into(),
                     pane: pane.into(),
                     terminal: registered.terminal,
@@ -173,6 +177,10 @@ pub fn resolve(pane: &str) -> Result<Binding> {
                     cwd: source_cwd.into(),
                 });
             }
+            ensure!(
+                agent["agent_session"]["source"] != "herdr:codex-client",
+                "native client selection proof is no longer current"
+            );
             let session = reported_session.context("Codex session identity unavailable")?;
             let home = std::env::var_os("CODEX_HOME")
                 .map(PathBuf::from)
@@ -192,6 +200,7 @@ pub fn resolve(pane: &str) -> Result<Binding> {
         );
     }
     Ok(Binding {
+        client_owned: false,
         agent: kind.into(),
         pane: pane.into(),
         terminal: agent["terminal_id"]
@@ -296,7 +305,8 @@ pub fn check_cancellable(binding: &Binding, cancel: Option<&AtomicBool>) -> Resu
                 });
                 ensure!(
                     verified_client
-                        || (agent_session(agent) == Some(binding.session)
+                        || (!binding.client_owned
+                            && agent_session(agent) == Some(binding.session)
                             && session_header(&binding.rollout)?.0 == binding.session),
                     "source session changed; reconnect explicitly"
                 );

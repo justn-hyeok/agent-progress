@@ -197,7 +197,8 @@ Codex는 실제 생성한 RPC 스키마도 검사합니다. 결과는 프로젝�
 ```sh
 ap compatibility                         # 로컬 CLI/RPC 검사, 모델 호출 없음
 ap compatibility --agent codex --live    # 인증된 짧은 계획 응답 검사
-ap compatibility --agent opencode --live --model opencode-go/glm-5.3-flash
+opencode models opencode-go              # 현재 사용 가능한 모델 확인
+ap compatibility --agent opencode --live --model opencode-go/gpt-6-luna
 ```
 
 `--live`는 임시 디렉터리에서 짧은 모델 요청을 하므로 기존 인증과 사용량이 필요합니다.

@@ -1,5 +1,14 @@
 # Release handoff
 
+OpenCode QA follow-up: the native fixture now requires a successful
+`todowrite` call instead of accepting a text-only answer, asks for an
+available file-editing tool, and lets package smoke select its OpenCode
+model per run. A fresh direct OpenCode 1.18.30 / `gpt-6-luna` run and the
+full installed 1.2.5 archive smoke both passed without corrective prompts.
+The archive smoke also passed Codex/Claude native paths, upgrade, rollback
+and uninstall. The 1.2.5 binary and public assets are unchanged; see the
+first section of `docs/current-plan.md` for the evidence boundary.
+
 1.2.5 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.5.
 Its source/tag commit b9e8064d845164662698012464d923cbecfb6415 passed
 Rust CI; formula a303efa675b4ec1a1879aac68a843c80c57c7516 passed

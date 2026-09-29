@@ -55,9 +55,14 @@ def producer(prompt,resume=None):
         output=json.loads(result.stdout)
         if output.get('is_error'):raise RuntimeError(f'Claude producer error; private log: {log}')
         return output['session_id']
+    events=[]
     for line in result.stdout.splitlines():
         try:event=json.loads(line)
         except ValueError:continue
+        events.append(event)
+    if not any((event.get('part') or {}).get('tool')=='todowrite' and (event['part'].get('state') or {}).get('status')=='completed' for event in events):
+        raise RuntimeError(f'OpenCode did not complete native todowrite; private output: {private}')
+    for event in events:
         if event.get('sessionID'):return event['sessionID']
     raise RuntimeError('OpenCode returned no exact session ID')
 
@@ -83,21 +88,25 @@ if args.agent=='claude':
     if args.native_tasks:prompt=intro+'Use TaskCreate to create exactly two pending tasks with subjects "[AP-01] Observe native input" and "[AP-02] Preserve across restart". Then reply only READY, no checklist.'
     s=producer(prompt)
 else:
-    s=producer(intro+'Call todowrite once with exactly two pending todos: "AP-01 Observe native input" and "AP-02 Preserve across restart". Then output exactly those two Markdown checklist rows, both pending.')
+    s=producer(intro+'Call todowrite once with exactly two pending todos: "AP-01 Observe native input" and "AP-02 Preserve across restart". Do not describe the tool call or output a checklist; reply only READY after the tool succeeds.')
 assert counts()==[0,2],counts()
 progress=(intro+'Output exactly these two rows: - [x] AP-01 Observe native input\n- [>] AP-02 Preserve across restart')
-if args.agent=='opencode':progress=intro+'Call todowrite with the first todo completed and second in_progress. Keep the same two titles. Then output the matching two Markdown checklist rows.'
+if args.agent=='opencode':progress=intro+'Call todowrite with the first todo completed and second in_progress. Keep the same two titles. Do not describe the tool call or output a checklist; reply only READY after the tool succeeds.'
 if args.agent=='claude' and args.native_tasks:progress=intro+'Use TaskUpdate to mark task 1 completed and task 2 in_progress. Then reply only READY, no checklist.'
-if args.artifact:progress=intro+'First use the native Write tool to write exactly "native input observed\\n" (one line with a newline, without quotes) to '+str(folder/'native-result.txt')+'. After the write succeeds, '+progress[len(intro):]
+if args.artifact:
+    file_tool='a file editing tool' if args.agent=='opencode' else 'the native Write tool'
+    progress=intro+'First use '+file_tool+' to write exactly "native input observed\\n" (one line with a newline, without quotes) to '+str(folder/'native-result.txt')+'. After the write succeeds, '+progress[len(intro):]
 s=producer(progress,s); assert counts()==[1,2],counts()
 if args.artifact:assert (folder/'native-result.txt').read_text()=='native input observed\n'
 state=folder/'.agent-progress'/f'project-{pid}.json'
 ids=[item['id'] for item in snapshot()['entries']] if args.without_product else [t['id'] for t in json.loads(state.read_text())['plan']['tasks']]
 # New process, same explicit native session; adapter state and product IDs must survive.
 finish=intro+'Output exactly these two rows: - [x] AP-01 Observe native input\n- [x] AP-02 Preserve across restart'
-if args.agent=='opencode':finish=intro+'Call todowrite with both existing todos completed. Keep both titles. Then output their completed Markdown checklist rows.'
+if args.agent=='opencode':finish=intro+'Call todowrite with both existing todos completed. Keep both titles. Do not describe the tool call or output a checklist; reply only READY after the tool succeeds.'
 if args.agent=='claude' and args.native_tasks:finish=intro+'Use TaskUpdate to mark task 2 completed. Then reply only READY, no checklist.'
-if args.artifact:finish=intro+'First use the native Write tool to replace '+str(folder/'native-result.txt')+' with exactly two lines: "native input observed" then "resumed in new process", each ending with a newline. After the write succeeds, '+finish[len(intro):]
+if args.artifact:
+    file_tool='a file editing tool' if args.agent=='opencode' else 'the native Write tool'
+    finish=intro+'First use '+file_tool+' to replace '+str(folder/'native-result.txt')+' with exactly two lines: "native input observed" then "resumed in new process", each ending with a newline. After the write succeeds, '+finish[len(intro):]
 s=producer(finish,s); assert counts()==[2,2],counts()
 if args.artifact:assert (folder/'native-result.txt').read_text()=='native input observed\nresumed in new process\n'
 assert ([item['id'] for item in snapshot()['entries']] if args.without_product else [t['id'] for t in json.loads(state.read_text())['plan']['tasks']])==ids

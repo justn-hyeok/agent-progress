@@ -1,5 +1,24 @@
 # Current release plan
 
+## OpenCode live QA reliability — 2026-09-30
+
+- [x] [AP-09/opencode-qa] Require an actual successful native `todowrite` event at every OpenCode step and remove the Claude-specific file-tool wording.
+- [x] [AP-09/opencode-package] Make the package-smoke OpenCode model selectable and verify a fresh installed 1.2.5 run end to end.
+- [x] [AP-19/opencode-handoff] Record the live result and its limits without changing the published 1.2.5 binary.
+
+The previous `glm-5.3-flash` package run timed out; a `gpt-6-luna` run with
+the old QA wording answered one progress request without a tool call.
+The revised fixture asks OpenCode for native todo updates only, uses an
+available file-editing tool instead of Claude's `Write` name, and fails
+explicitly if `todowrite` did not complete. Two fresh installed-ap 1.2.5
+checks passed without corrective prompts: direct OpenCode 1.18.30 native
+todos/file work/resume (0/2 → 1/2 → 2/2 with stable IDs), and the full archive
+package smoke including Codex, Claude, OpenCode, temporary upgrade, rollback
+and uninstall. The package-smoke model can be changed per run with
+`--opencode-model`; it does not edit user configuration. This removes the
+observed QA prompt/model selection failures; it does not guarantee a provider
+will never time out or that every model will always choose a tool.
+
 ## Skill bundle release — 2026-09-30
 
 - [x] [AP-19/skill-package] Include `$ap` and the three focused skills in the 1.2.5 archive and Homebrew formula.

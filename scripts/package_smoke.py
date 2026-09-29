@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install actual ap releases in a temporary prefix, update/rollback and preserve project data."""
 import hashlib
+import argparse
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,11 @@ import tempfile
 import uuid
 
 root=Path(__file__).resolve().parents[1]
-archive=Path(sys.argv[1] if len(sys.argv)>1 else 'dist/agent-progress-0.4.0-macos-arm64.tar.gz').resolve()
+parser=argparse.ArgumentParser()
+parser.add_argument('archive',nargs='?',default='dist/agent-progress-0.4.0-macos-arm64.tar.gz')
+parser.add_argument('--opencode-model',default='opencode-go/gpt-6-luna',help='Available OpenCode model for this one live fixture; no global model change')
+options=parser.parse_args()
+archive=Path(options.archive).resolve()
 def run(args,**kwargs):return subprocess.check_output([str(x) for x in args],text=True,**kwargs)
 with tempfile.TemporaryDirectory(prefix='ap-package-smoke-') as tmp:
     temp=Path(tmp);unpacked=temp/'unpacked';unpacked.mkdir()
@@ -49,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix='ap-package-smoke-') as tmp:
     for agent in ['claude','opencode']:
         args=[sys.executable,root/'scripts/agent_contract.py',agent,'--binary',ap,'--artifact']
         if agent=='claude': args+=['--native-tasks']
-        else:args+=['--model','opencode-go/glm-5.3-flash']
+        else:args+=['--model',options.opencode_model]
         adapters[agent]=json.loads(run(args))
         assert adapters[agent]['ap_version']==initial_version
     adapter_result=root/'.agent-progress'/f'installed-adapters-{original_version}-{native["ap_binary_sha256"][:12]}-{run_id}.json'

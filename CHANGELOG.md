@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1 — 2026-09-29
+
+- Codex launcher observes its own frontend connection to the shared native server
+  instead of forcing `--no-daemon`. Start/resume/fork replies identify the exact
+  source process and session; raw transport bytes remain unchanged.
+- Selection markers invalidate stale bindings when the same frontend changes threads.
+  Unrelated thread reads and late responses cannot select a different source.
+- Reuse managed observers across session changes, retaining focus, sizes and history.
+- Include the concrete source-discovery failure in doctor output.
+- Fresh native Codex/Claude Code/OpenCode plan and resume checks; see the verification
+  report for exact versions and separate launcher coverage.
+
 ## 1.1.0 — 2026-09-28
 
 - Signal, Forest, Ocean and Amber presets, custom preset inheritance and project-local

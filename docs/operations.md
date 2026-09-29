@@ -68,11 +68,13 @@ pane/terminal/PID/session을 등록한다. 공유 daemon의 상속 환경변수�
 `ap connect remove --agent NAME`은 정확한 관리 부분만 제거하고 backup을 보존한다.
 사용자 수정/같은 이름의 무관한 plugin은 덮어쓰지 않는다. 전역 설정은 바꾸지 않는다.
 
-`ap launch --agent codex`는 native Codex를 embedded(`--no-daemon`)로 실행해 각 창의
-훅에 프로세스 소유권을 유지한다. 설치한 Codex 자체를 실행하며 지휘/작업 실행은
-하지 않는다. Codex 인자는 `ap launch --agent codex -- resume SESSION`처럼 전달한다.
-0.157.1에서 프로젝트의 daemon 설정만으로 공유 실행을 막지 못한 실제 결과에 따라
-런처는 명시적 실행 플래그를 쓴다. 사용자/프로젝트의 다른 features 값은 바꾸지 않는다.
+1.1.1의 `ap launch --agent codex`는 설치된 native Codex의 연결을 관찰해 실행한 창과
+실제 세션을 짝짓는다. 기본 실행에서는 공유 서버를 끄지 않는다. 응답의 세션 ID와
+native 프로세스 소유권을 확인하고, 다른 세션 조회나 늦은 응답을 현재 세션으로
+오인하지 않는다. 원시 전송 내용은 바꾸거나 저장하지 않는다.
+Codex 인자는 `ap launch --agent codex -- resume SESSION`처럼 전달한다.
+`--cd`의 실제 디렉터리를 적용한다. native CLI가 embedded 실행을 요구하는 명시적
+설정 옵션과 `--no-daemon`은 사용자 선택 그대로 전달한다. 전역 설정은 변경하지 않는다.
 등록에 성공하면 런처의 진행 창은 자동으로 열리며 같은 source terminal의 다음
 세션에서는 관리된 창을 재사용한다. protected lobby/busy/unknown pane은 건드리지
 않고 진단만 남긴다. 원본의 공유 서버 세션을 그대로 읽을 때는 정확한 Herdr/owner metadata가
@@ -81,7 +83,7 @@ pane/terminal/PID/session을 등록한다. 공유 daemon의 상속 환경변수�
 Codex 프로젝트는 먼저 Codex에서 신뢰된 상태여야 한다. native hook review도
 Codex가 요구하면 적용한 명령을 확인한다. 비 Git 프로젝트에서는 Codex의
 `project_root_markers`에 `ap.project.json`이 있거나 현재 디렉터리를 root로 쓰는
-설정이 필요할 수 있다. 런처는 해당 인자를 실행에만 적용하며 전역에 추가하지 않는다.
+설정이 필요할 수 있다. native 프로젝트 설정과 신뢰 조건은 해당 하네스를 따른다.
 진행 창은 에이전트 입력/대화를 바꾸지 않는다. 에이전트는 기존 계획을 유지하며
 일반 실행 보고는 `### 진행 계획`과 체크리스트로 표시하면 자동으로 반영된다.
 

@@ -154,7 +154,7 @@ pub fn resolve(pane: &str) -> Result<Binding> {
             {
                 let (session, source_cwd) = session_header(&registered.rollout)?;
                 ensure!(
-                    reported_session.is_none_or(|id| id == session),
+                    registered.schema == 3 || reported_session.is_none_or(|id| id == session),
                     "Herdr/native hook identity mismatch"
                 );
                 ensure!(
@@ -209,9 +209,12 @@ fn agent_session(agent: &Value) -> Option<Uuid> {
     let identity = &agent["agent_session"];
     (identity["agent"] == "codex"
         && identity["kind"] == "id"
-        && identity["source"] == "herdr:codex")
-        .then(|| identity["value"].as_str()?.parse().ok())
-        .flatten()
+        && matches!(
+            identity["source"].as_str(),
+            Some("herdr:codex" | "herdr:codex-client")
+        ))
+    .then(|| identity["value"].as_str()?.parse().ok())
+    .flatten()
 }
 
 fn open_rollout(pid: u64, cancel: Option<&AtomicBool>) -> Result<PathBuf> {
@@ -281,9 +284,20 @@ pub fn check_cancellable(binding: &Binding, cancel: Option<&AtomicBool>) -> Resu
                 "source session changed; reconnect explicitly"
             ),
             Err(_) => {
+                let verified_client = crate::bridge::lookup(
+                    &binding.cwd,
+                    &binding.pane,
+                    &binding.terminal,
+                    binding.pid,
+                    "codex",
+                )
+                .is_ok_and(|r| {
+                    r.schema == 3 && r.session == binding.session && r.rollout == binding.rollout
+                });
                 ensure!(
-                    agent_session(agent) == Some(binding.session)
-                        && session_header(&binding.rollout)?.0 == binding.session,
+                    verified_client
+                        || (agent_session(agent) == Some(binding.session)
+                            && session_header(&binding.rollout)?.0 == binding.session),
                     "source session changed; reconnect explicitly"
                 );
             }

@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod codex_client;
 pub mod connection;
 pub mod dashboard;
 pub mod doctor;

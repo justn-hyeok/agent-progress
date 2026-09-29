@@ -82,6 +82,56 @@ fn fixture(root: &std::path::Path) {
 }
 
 #[test]
+fn client_selection_changes_invalidate_old_binding_even_while_its_transcript_exists() {
+    let root = tempdir().unwrap();
+    let dir = root.path().join(".agent-progress/bridges");
+    fs::create_dir_all(&dir).unwrap();
+    let session = Uuid::new_v4();
+    let pid = std::process::id();
+    let rollout = root.path().join("session.jsonl");
+    fs::write(
+        &rollout,
+        format!(
+            "{}\n",
+            json!({"type":"session_meta","payload":{"id":session,"cwd":root.path()}})
+        ),
+    )
+    .unwrap();
+    let marker = root.path().join("selection.json");
+    fs::write(&marker, json!({"session":session,"owner":pid}).to_string()).unwrap();
+    let binding = bridge::Registration {
+        schema: 3,
+        agent: "codex".into(),
+        native_session: session.to_string(),
+        session,
+        rollout,
+        cwd: root.path().into(),
+        pane: "w1:p1".into(),
+        terminal: "fixed".into(),
+        pid: pid.into(),
+        client_owner: Some(pid),
+        client_marker: Some(marker.clone()),
+    };
+    fs::write(
+        dir.join(format!(
+            "pane-{}.json",
+            agent_progress::recovery::hash(b"w1:p1")
+        )),
+        serde_json::to_vec(&binding).unwrap(),
+    )
+    .unwrap();
+    assert!(bridge::lookup(root.path(), "w1:p1", "fixed", pid.into(), "codex").is_ok());
+    fs::write(
+        &marker,
+        json!({"session":Uuid::new_v4(),"owner":pid}).to_string(),
+    )
+    .unwrap();
+    assert!(bridge::lookup(root.path(), "w1:p1", "fixed", pid.into(), "codex").is_err());
+    fs::remove_file(marker).unwrap();
+    assert!(bridge::lookup(root.path(), "w1:p1", "fixed", pid.into(), "codex").is_err());
+}
+
+#[test]
 fn native_adapters_keep_sessions_separate_and_never_store_unrelated_prose() {
     let temp = tempdir().unwrap();
     fixture(temp.path());

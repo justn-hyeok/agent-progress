@@ -1,5 +1,12 @@
 # Release handoff
 
+1.1.1 adds a frontend connection observer for the Codex launcher while retaining the
+shared native server. Two clients, resume, new-thread reuse and layout preservation
+passed live on Codex CLI 0.157.1 / native server 0.158.0. Ephemeral helper threads and
+unrelated reads are excluded. Direct shared `codex` startup without the launcher is
+not claimed automatically identifiable. Native harness rechecks are in
+verification/native-harnesses.md. Herdr source and global agent settings were unchanged.
+
 Version 1.1.0 includes YAML themes, built-in and inherited presets, background brightness
 and per-state palettes, in addition to the 1.0.x native adapters, passive pane dashboard,
 recoverable storage and unsigned macOS arm64 installer.

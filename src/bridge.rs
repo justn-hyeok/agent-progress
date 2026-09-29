@@ -24,6 +24,10 @@ pub struct Registration {
     pub pane: String,
     pub terminal: String,
     pub pid: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_owner: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_marker: Option<PathBuf>,
 }
 
 pub fn read_input(mut input: impl Read) -> Result<Value> {
@@ -350,6 +354,8 @@ fn register(
         pane: pane.clone(),
         terminal: terminal.into(),
         pid,
+        client_owner: None,
+        client_marker: None,
     };
     recovery::write(
         &dir.join(format!("pane-{}.json", recovery::hash(pane.as_bytes()))),
@@ -374,7 +380,10 @@ fn register(
 }
 
 fn sender_is_descendant(expected: u64) -> Result<bool> {
-    let mut current = std::process::id() as u64;
+    process_is_descendant(std::process::id().into(), expected)
+}
+
+fn process_is_descendant(mut current: u64, expected: u64) -> Result<bool> {
     for _ in 0..12 {
         if current == expected {
             return Ok(true);
@@ -393,6 +402,83 @@ fn sender_is_descendant(expected: u64) -> Result<bool> {
     Ok(false)
 }
 
+/// Called only after a reply on the launching frontend's private RPC connection.
+pub fn register_client(
+    pane: &str,
+    owner: u32,
+    session: Uuid,
+    rollout: &Path,
+    cwd: &Path,
+    marker: &Path,
+) -> Result<()> {
+    let rollout = rollout.canonicalize()?;
+    let (actual_session, actual_cwd) = live::session_header(&rollout)?;
+    ensure!(
+        actual_session == session
+            && Path::new(&actual_cwd).canonicalize()? == cwd.canonicalize()?,
+        "native client response/transcript identity mismatch"
+    );
+    let info = herdr::call(&["agent", "get", pane])?;
+    let agent = &info["result"]["agent"];
+    ensure!(agent["agent"] == "codex", "source no longer contains Codex");
+    let terminal = agent["terminal_id"]
+        .as_str()
+        .context("source terminal missing")?;
+    let process = herdr::call(&["pane", "process-info", "--pane", pane])?;
+    let candidates = process["result"]["process_info"]["foreground_processes"]
+        .as_array()
+        .context("source processes missing")?;
+    let native = candidates
+        .iter()
+        .filter(|p| p["name"] == "codex")
+        .collect::<Vec<_>>();
+    ensure!(
+        native.len() == 1,
+        "source must have one native Codex frontend"
+    );
+    let pid = native[0]["pid"].as_u64().context("source PID missing")?;
+    ensure!(
+        process_is_descendant(pid, owner.into())?,
+        "native frontend no longer belongs to its launcher"
+    );
+    let root = Project::discover(cwd)?
+        .map(|p| p.root().to_owned())
+        .unwrap_or(cwd.to_owned());
+    let dir = directory(&root)?;
+    let binding = Registration {
+        schema: 3,
+        agent: "codex".into(),
+        native_session: session.to_string(),
+        session,
+        rollout,
+        cwd: root,
+        pane: pane.into(),
+        terminal: terminal.into(),
+        pid,
+        client_owner: Some(owner),
+        client_marker: Some(marker.into()),
+    };
+    recovery::write(
+        &dir.join(format!("pane-{}.json", recovery::hash(pane.as_bytes()))),
+        &serde_json::to_vec(&binding)?,
+        true,
+    )?;
+    if let Err(error) = herdr::call(&[
+        "pane",
+        "report-agent-session",
+        pane,
+        "--source",
+        "herdr:codex-client",
+        "--agent",
+        "codex",
+        "--agent-session-id",
+        &session.to_string(),
+    ]) {
+        eprintln!("native metadata publication unavailable: {error:#}");
+    }
+    Ok(())
+}
+
 pub fn lookup(
     cwd: &Path,
     pane: &str,
@@ -400,16 +486,38 @@ pub fn lookup(
     pid: u64,
     agent: &str,
 ) -> Result<Registration> {
-    let project = Project::discover(cwd)?.context("no project declaration")?;
-    let root = project.root();
+    let project = Project::discover(cwd)?;
+    let standalone_root = cwd.canonicalize()?;
+    let root = project
+        .as_ref()
+        .map(|p| p.root())
+        .unwrap_or(&standalone_root);
     let path = root
         .join(".agent-progress/bridges")
         .join(format!("pane-{}.json", recovery::hash(pane.as_bytes())));
     let binding: Registration = serde_json::from_slice(&recovery::read(&path)?)?;
     ensure!(
-        binding.schema == 2,
+        binding.schema == 2 || binding.schema == 3,
         "native registration predates process ownership proof; wait for a verified hook"
     );
+    if binding.schema == 3 {
+        let owner = binding
+            .client_owner
+            .context("client ownership proof missing")?;
+        let marker = binding
+            .client_marker
+            .as_ref()
+            .context("client selection proof missing")?;
+        let selected: Value = serde_json::from_slice(&recovery::read(marker)?)?;
+        ensure!(
+            selected["session"] == binding.session.to_string() && selected["owner"] == owner,
+            "native client selected another session; reconnect explicitly"
+        );
+        ensure!(
+            agent == "codex" && process_is_descendant(pid, owner.into())?,
+            "native client ownership changed"
+        );
+    }
     ensure!(
         binding.pane == pane
             && binding.terminal == terminal

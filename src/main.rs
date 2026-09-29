@@ -34,12 +34,25 @@ enum Command {
         #[command(subcommand)]
         action: PresentationAction,
     },
-    /// Start an existing native CLI; Codex uses embedded mode so pane hooks have a proven owner.
+    /// Start an existing native CLI; observe Codex's frontend connection without disabling its shared server.
     Launch {
         #[arg(long,value_parser=["codex","claude","opencode"],default_value="codex")]
         agent: String,
         #[arg(last = true)]
         args: Vec<String>,
+    },
+    #[command(hide = true)]
+    CodexClient {
+        #[arg(long)]
+        socket: PathBuf,
+        #[arg(long)]
+        backend: PathBuf,
+        #[arg(long)]
+        pane: String,
+        #[arg(long)]
+        owner: u32,
+        #[arg(long)]
+        root: PathBuf,
     },
     /// Native hook adapter. Reads a bounded JSON event on stdin; never injects model context.
     Bridge {
@@ -373,17 +386,23 @@ fn run(cli: Cli) -> Result<()> {
         }
         Command::Launch { agent, args } => {
             use std::os::unix::process::CommandExt;
+            if agent == "codex" {
+                return agent_progress::codex_client::launch(args);
+            }
             let mut command = std::process::Command::new(&agent);
             command.env("AP_AUTO_OPEN", "1");
-            if agent == "codex" {
-                command.args([
-                    "--no-daemon",
-                    "-c",
-                    "project_root_markers=[\".git\",\"ap.project.json\"]",
-                ]);
-            }
             command.args(args);
             return Err(command.exec().into());
+        }
+        Command::CodexClient {
+            socket,
+            backend,
+            pane,
+            owner,
+            root,
+        } => {
+            agent_progress::codex_client::serve(&socket, &backend, &pane, owner, &root)?;
+            return Ok(());
         }
         Command::Bridge { agent, root } => {
             let event = agent_progress::bridge::read_input(std::io::stdin().lock())?;

@@ -28,8 +28,8 @@ pub fn inspect(project: Option<PathBuf>, pane: Option<String>, rollout: Option<P
                 checks.push(json!({"name":"pane","status":"connected","pane":binding.pane,"session":binding.session,"pid":binding.pid,"rollout":binding.rollout}));
                 Some(binding.rollout)
             }
-            Err(_) => {
-                checks.push(json!({"name":"pane","status":"disconnected","pane":pane,"recovery":"The exact source pane/session must exist; reconnect explicitly. Focused/latest panes are never substituted"}));
+            Err(error) => {
+                checks.push(json!({"name":"pane","status":"disconnected","pane":pane,"reason":error.to_string(),"recovery":"The exact source pane/session must exist; reconnect explicitly. Focused/latest panes are never substituted"}));
                 None
             }
         }

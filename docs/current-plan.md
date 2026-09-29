@@ -1,5 +1,26 @@
 # Current release plan
 
+## Native connection follow-up — 2026-09-29
+
+- [x] [AP-09/native-recheck] Recheck installed Codex, Claude Code and OpenCode with actual native inputs.
+- [x] [AP-06/daemon] Verify the launcher connection fix with shared-server clients, new threads and resume.
+- [ ] [AP-19/connection-release] Verify the final connection fix and update support documentation and release assets.
+
+Claude Code 2.1.274 and OpenCode 1.18.30 passed native task/todo updates, restricted fixture
+file work and new-process resume against ap 1.1.0. Codex 0.157.1 passed native Plan/report,
+goal lifecycle, cross-session IDs and app-server restart persistence. This is fresh native
+adapter evidence, not proof that every installation or future harness version is supported.
+
+Shared-server frontends reproduce missing pane/session identity in an isolated Herdr
+fixture. Hook inputs have session/transcript data but no client PID or pane identity;
+the inherited pane environment is insufficient. Herdr client-side identity delivery is
+implemented in agent-progress itself; Herdr source changes were not needed for the
+launcher route. Plain shared `codex` startup outside that route is not claimed fixed.
+Final native lifecycle checks passed: two distinct client sessions in one project;
+cross-directory resume; new thread reusing the observer; the other source unchanged;
+focus and 28/12 pane heights retained. Package publication remains in progress.
+Apple signing/notarization remain excluded.
+
 Agent skill follow-up completed: skills/ap provides the $ap entrypoint and focused
 connection, theme and recovery references. Installed locally in the Codex skills
 directory; both source and installed copies passed skill-creator validation.

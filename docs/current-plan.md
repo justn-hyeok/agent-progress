@@ -1,5 +1,38 @@
 # Current release plan
 
+## First-run pane sizing — 2026-09-30
+
+- [x] [AP-06/pane-size] Add project-local first-use size selection and `ap config set --pane-size` with backward-compatible defaults.
+- [x] [AP-09/pane-size] Apply size immediately to the exact owned Herdr/tmux observer and verify minimum, position, focus and isolation.
+- [x] [AP-19/pane-size-candidate] Prepare and locally verify the 1.2.6 archive, Homebrew formula, skills and first-run documentation.
+- [ ] [AP-19/pane-size-release] Publish and install 1.2.6 only after release authorization; keep 1.2.5 immutable.
+
+The first setup runs in the project root with `ap setup` (also `ap config setup`),
+offering the measured Herdr minimum 10%, 20%, 30% and 40%, plus direct 10–50%
+input. `ap config set --pane-size N` is the noninteractive later-change path.
+Old JSON/YAML settings retain 30%; existing color, position and auto-open
+choices survive setup. Homebrew itself stays noninteractive and will show the
+post-install command in the 1.2.6 formula caveat. A saved change made in the
+exact source pane resizes only its owned progress sibling now; another terminal
+saves it for the next opening.
+
+The live installed Herdr test requested a 98/2 split in an isolated owned
+worktree pane. Herdr clamped it to 90/10 (59/7 rows in a 66-row area) without
+changing focus; the temporary test pane was closed. The CLI range follows
+that observed current-version minimum. Mocked exact-session Herdr tests cover
+new below/above splits, immediate 40% and 10% updates, protected layout and
+focus. Real tmux/PTY tests cover initial and live sizes both below and above.
+
+Local candidate: `dist/agent-progress-1.2.6-macos-arm64.tar.gz`,
+SHA-256 `f52e82a53f8a77766de23039637434596eb818f9221926322a398f31dd905aea`.
+The repack matched byte-for-byte. Full Rust tests, fmt, Clippy, four source
+skill validations, release-binary first-run/presentation/tmux PTY scenarios,
+the extracted archive's first-run UI, and exact archive smoke passed. The
+archive smoke used disposable authenticated Codex/Claude/OpenCode producers,
+then verified update, rollback and uninstall with product/unrelated data
+preserved. This is local/fixture evidence; no 1.2.6 GitHub tag, published
+assets, Homebrew CI or installed upgrade is claimed.
+
 ## OpenCode live QA reliability — 2026-09-30
 
 - [x] [AP-09/opencode-qa] Require an actual successful native `todowrite` event at every OpenCode step and remove the Claude-specific file-tool wording.

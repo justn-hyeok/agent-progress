@@ -94,6 +94,21 @@ v1.2.0 사용자는 바이너리 업그레이드 후 `ap shell install --shell z
 새 셸에 적용되며 현재 셸에서 이미 로드한 함수는 `unfunction codex`로 지울 수
 있습니다. 원래 실행을 즉시 호출하려면 `command codex`를 사용합니다.
 
+## 첫 설정과 진행 창 크기
+
+Homebrew 설치는 비대화형이다. 프로젝트 루트에서 `ap setup`을 실행하면
+진행 창 높이를 최소 10%·20%·30%·40% 또는 10~50% 사이로 선택한다. 기존 설정의
+다른 항목은 보존하고, 입력 없이 Enter를 누르면 현재 크기를 유지한다.
+자동 설정을 건너뛰면 기본값은 30%다. 스크립트나 나중 변경에는
+`ap config set --pane-size 25`를 쓴다. `ap config show`와 YAML의
+`pane_size_percent`가 저장된 비율을 보여준다.
+
+Herdr는 관리 중인 정확한 수직 형제 pane에 즉시 적용한다. Herdr 자체가
+허용하는 최소 pane 높이에 걸리면 실제 배치는 그 한계까지만 바뀐다.
+`ap launch`가 만든 tmux 창 안에서 바꿀 때도 정확히 소유한 두 pane만
+크기를 바꾸며, 그 밖에서 저장하면 다음 실행에 적용한다. 다른 창, 포커스,
+에이전트 설정은 바꾸지 않는다.
+
 ## 1.1.0 YAML·프리셋·배경
 
 `ap config presets`로 Signal/Forest/Ocean/Amber와 사용자 프리셋을 확인한다.

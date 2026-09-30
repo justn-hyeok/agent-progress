@@ -364,6 +364,35 @@ pub fn open_quiet(pane: Option<String>, reconnect: bool) -> Result<()> {
     open_internal(pane, reconnect, true, None)
 }
 
+/// Update only the observer owned by this exact agent pane; never create one
+/// while changing saved presentation settings.
+pub fn refresh_existing_for_root(root: &Path) -> Result<()> {
+    if std::env::var("HERDR_ENV").as_deref() != Ok("1") {
+        return Ok(());
+    }
+    let Ok(pane) = std::env::var("HERDR_PANE_ID") else {
+        return Ok(());
+    };
+    let Ok(binding) = resolve(&pane) else {
+        return Ok(());
+    };
+    let binding_root = crate::project::Project::discover(&binding.cwd)?;
+    let binding_root = binding_root
+        .as_ref()
+        .map(|project| project.root())
+        .unwrap_or(&binding.cwd);
+    if binding_root.canonicalize()? != root.canonicalize()? {
+        return Ok(());
+    }
+    let receipt = binding
+        .cwd
+        .join(format!(".agent-progress/window-{}.json", binding.session));
+    if receipt.exists() {
+        open_internal(Some(pane), false, true, None)?;
+    }
+    Ok(())
+}
+
 fn open_internal(
     pane: Option<String>,
     reconnect: bool,
@@ -374,7 +403,8 @@ fn open_internal(
         .or_else(|| std::env::var("HERDR_PANE_ID").ok())
         .context("source pane required")?;
     let binding = resolve(&pane)?;
-    let position = position.unwrap_or(crate::settings::load_for_cwd(&binding.cwd)?.position);
+    let settings = crate::settings::load_for_cwd(&binding.cwd)?;
+    let position = position.unwrap_or(settings.position);
     let source_info = call(&["pane", "get", &pane])?;
     let workspace = source_info["result"]["pane"]["workspace_id"]
         .as_str()
@@ -569,6 +599,7 @@ fn open_internal(
                     record["position"] = serde_json::json!(position);
                     crate::recovery::write(&receipt, &serde_json::to_vec_pretty(&record)?, true)?;
                 }
+                resize_observer(&pane, child, settings.pane_size_percent)?;
                 if !quiet {
                     println!("기존 진행 상황 창: {child} ← {pane} · {}", binding.session);
                 }
@@ -595,6 +626,7 @@ fn open_internal(
             record["position"] = serde_json::json!(position);
             crate::recovery::write(&receipt, &serde_json::to_vec_pretty(&record)?, true)?;
         }
+        resize_observer(&pane, child, settings.pane_size_percent)?;
         let command = format!(
             "{} follow --pane {} --session {}",
             shell_quote(
@@ -637,6 +669,7 @@ fn open_internal(
         "protected lobby: run follow in an existing separate terminal"
     );
     check(&binding)?;
+    let ratio = settings.source_split_ratio();
     let result = call(&[
         "pane",
         "split",
@@ -645,7 +678,7 @@ fn open_internal(
         "--direction",
         "down",
         "--ratio",
-        "0.70",
+        &ratio,
         "--cwd",
         binding.cwd.to_str().context("cwd encoding")?,
         "--no-focus",
@@ -672,6 +705,7 @@ fn open_internal(
         record["position"] = serde_json::json!(position);
         crate::recovery::write(&receipt, &serde_json::to_vec_pretty(&record)?, true)?;
     }
+    resize_observer(&pane, child, settings.pane_size_percent)?;
     let command = format!(
         "{} follow --pane {} --session {}",
         shell_quote(executable.to_str().context("binary path encoding")?),
@@ -790,6 +824,101 @@ fn reposition(source: &str, child: &str, position: crate::settings::Position) ->
     ensure!(
         final_height(source)?.abs_diff(ah) <= 1 && final_height(child)?.abs_diff(bh) <= 1,
         "pane sizes were not restored after exchange"
+    );
+    Ok(())
+}
+
+fn resize_observer(source: &str, child: &str, size_percent: u8) -> Result<()> {
+    let value = call(&["pane", "layout", "--pane", source])?;
+    let layout = &value["result"]["layout"];
+    let panes = layout["panes"]
+        .as_array()
+        .context("pane geometry unavailable")?;
+    let rect = |id: &str| {
+        panes
+            .iter()
+            .find(|p| p["pane_id"] == id)
+            .map(|p| &p["rect"])
+            .context("pane disappeared")
+    };
+    let a = rect(source)?;
+    let b = rect(child)?;
+    let number = |rect: &Value, key: &str| rect[key].as_u64().context("invalid pane geometry");
+    let ax = number(a, "x")?;
+    let ay = number(a, "y")?;
+    let aw = number(a, "width")?;
+    let ah = number(a, "height")?;
+    let bx = number(b, "x")?;
+    let by = number(b, "y")?;
+    let bw = number(b, "width")?;
+    let bh = number(b, "height")?;
+    ensure!(
+        ax == bx && aw == bw && (ay + ah == by || by + bh == ay),
+        "owned observer is not a vertical sibling; layout preserved"
+    );
+    let total = ah + bh;
+    ensure!(total >= 2, "split is too short for two panes");
+    let desired_rows = ((total * u64::from(size_percent) + 50) / 100).clamp(1, total - 1);
+    if bh.abs_diff(desired_rows) <= 1 {
+        return Ok(());
+    }
+    let split = layout["splits"]
+        .as_array()
+        .context("split geometry unavailable")?
+        .iter()
+        .find(|s| {
+            s["direction"] == "down"
+                && s["rect"]["x"] == ax
+                && s["rect"]["y"] == ay.min(by)
+                && s["rect"]["width"] == aw
+                && s["rect"]["height"] == total
+        })
+        .context("observer/source are not direct split siblings; layout preserved")?;
+    let current = split["ratio"].as_f64().context("split ratio missing")?;
+    let desired = if by < ay {
+        f64::from(size_percent) / 100.0
+    } else {
+        1.0 - f64::from(size_percent) / 100.0
+    };
+    let focused = layout["focused_pane_id"].clone();
+    let direction = if desired < current { "up" } else { "down" };
+    let mut remaining = (desired - current).abs();
+    while remaining > 0.0001 {
+        let step = remaining.min(0.5);
+        call(&[
+            "pane",
+            "resize",
+            "--pane",
+            source,
+            "--direction",
+            direction,
+            "--amount",
+            &step.to_string(),
+        ])?;
+        remaining -= step;
+    }
+    let after = call(&["pane", "layout", "--pane", source])?;
+    ensure!(
+        after["result"]["layout"]["focused_pane_id"] == focused,
+        "focus changed during resize; inspect exact layout"
+    );
+    let final_rows = after["result"]["layout"]["panes"]
+        .as_array()
+        .context("final pane geometry missing")?
+        .iter()
+        .find(|p| p["pane_id"] == child)
+        .and_then(|p| p["rect"]["height"].as_u64())
+        .context("final observer height missing")?;
+    // Herdr may stop at its own minimum for either pane. Accept only a
+    // measured move toward the requested size, never a move away from it.
+    let toward_requested = if desired_rows > bh {
+        final_rows >= bh && final_rows <= desired_rows + 1
+    } else {
+        final_rows <= bh && final_rows + 1 >= desired_rows
+    };
+    ensure!(
+        toward_requested,
+        "Herdr resized a different split; inspect the layout"
     );
     Ok(())
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.6 — 2026-09-30
+
+- Add `ap setup` / `ap config setup` to choose a project-local progress-pane
+  height on first use, including the installed Herdr minimum of 10%.
+- Add `ap config set --pane-size PERCENT` (10–50) and YAML
+  `pane_size_percent`; existing settings retain the 30% default.
+- Apply size changes immediately to an exact owned Herdr or tmux observer
+  when run from its source pane, preserving focus and unrelated layouts.
+
 ## 1.2.5 — 2026-09-30
 
 - Split the Codex skill into `$ap-connect`, `$ap-theme`, and `$ap-recover`, while

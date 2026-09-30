@@ -1,5 +1,15 @@
 # Release handoff
 
+Unpublished 1.2.6 pane-size candidate: `ap setup` chooses project-local 10–50%
+progress height, and `ap config set --pane-size N` changes it later. Exact
+owned Herdr/tmux observers resize immediately from their source pane; another
+terminal saves the preference for the next opening. Existing settings retain
+30%. Installed Herdr clamped a 2% request to its 10% minimum in a disposable
+owned pane. Full local Rust, PTY, skill and exact archive smoke passed; archive
+SHA-256 is f52e82a53f8a77766de23039637434596eb818f9221926322a398f31dd905aea.
+The 1.2.5 public release is unchanged. See the first section of
+`docs/current-plan.md` for verification and the remaining publication gate.
+
 OpenCode QA follow-up: the native fixture now requires a successful
 `todowrite` call instead of accepting a text-only answer, asks for an
 available file-editing tool, and lets package smoke select its OpenCode

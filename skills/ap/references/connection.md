@@ -90,6 +90,12 @@ focused-pane state, emits terminal request arguments, or repairs native settings
 
 ## Pane source and placement
 
+From the project root, `ap setup` selects the initial progress-pane height.
+For scripts or later changes, `ap config set --pane-size 25` saves a 10–50%
+height preference. The exact owned Herdr or tmux observer resizes immediately
+when the command runs from its source pane; otherwise the next opening uses
+the preference. The terminal layout engine's minimum height wins when needed.
+
 Inside the current agent's Herdr pane, `ap open` uses the exact source and saved placement.
 Working hooks open the observer automatically unless `auto_open=false` or `AP_AUTO_OPEN=0`.
 

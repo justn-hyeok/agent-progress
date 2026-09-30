@@ -18,6 +18,16 @@ ap --version
 
 Rust·Node·Herdr는 패키지 설치 의존성이 아닙니다. 진행 창 자동 생성과 위치 이동에는 Herdr가 필요합니다. Homebrew 대신 릴리즈의 `.tar.gz`와 체크섬을 받아 설치할 수도 있습니다. [패키지 설치 방법](docs/distribution.md)을 참고하세요.
 
+설치 후 진행 창을 쓸 프로젝트 루트에서 `ap setup`을 실행하면 높이를
+Herdr 최소(10%)·작게(20%)·보통(30%)·크게(40%) 또는 10~50% 사이의 값으로 고릅니다.
+Homebrew 설치 자체는 대화형 설정을 실행하지 않습니다. 건너뛰면 기존 기본값
+30%를 사용합니다. 이 설정은 프로젝트별로 저장되며 목표·계획은 바꾸지 않습니다.
+
+```sh
+cd /path/to/project
+ap setup
+```
+
 ```sh
 # 업데이트
 brew update
@@ -144,17 +154,22 @@ $ap-recover 저장된 진행 상황과 근거를 확인하고 이어서 할 일�
 
 `ap.project.json`이 있는 프로젝트는 그 제품 계획을 전체 기준으로 삼습니다. 세부 작업의 완료가 상위 수용 항목 전체를 완료시키지는 않습니다. [제품 계획 연결 계약](docs/core-connection.md)을 참고하세요.
 
-## 테마와 위치
+## 크기·테마·위치
 
 ```sh
+ap config show
+ap config set --pane-size 25       # 높이 비율 25%; 허용 범위 10~50
 ap config presets
 ap config set --preset forest --brightness 1.2
 ap config set --accent '#88AAFF'
 
-# 위쪽 배치를 기본값으로 저장하고 적용
+# 위쪽 배치를 기본값으로 저장하고, 이 pane의 관리 창에도 바로 적용
 ap config set --position above
-ap open
 ```
+
+Herdr 또는 `ap launch`가 만든 tmux의 **현재 소스 창**에서 크기를 바꾸면,
+소유가 확인된 진행 창에 바로 반영됩니다. 다른 터미널에서 바꾸면 다음 창 열기부터
+적용됩니다. 작은 창에서 Herdr나 tmux가 더 큰 최소 pane을 요구하면 그 한계를 따릅니다.
 
 기본 프리셋은 `signal`, `forest`, `ocean`, `amber`입니다. 밝기는 0.25~2.0이며 배경에만 적용됩니다. 프리셋을 바꾸면 기존 개별 색 덮어쓰기는 해제됩니다.
 

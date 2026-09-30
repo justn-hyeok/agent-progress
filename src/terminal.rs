@@ -217,18 +217,22 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
             ],
         )?
     };
+    crate::recovery::write(&path.join("source-pane"), source.as_bytes(), false)?;
     let height: usize = tmux(
         socket.as_deref(),
         &["display-message", "-p", "-t", &source, "#{window_height}"],
     )?
     .parse()?;
-    let progress_rows = (height / 3).clamp(1, 8).to_string();
+    let progress_rows = settings.progress_rows(height).to_string();
     let mut split = vec![
         "split-window",
         "-d",
         "-v",
         "-l",
         &progress_rows,
+        "-P",
+        "-F",
+        "#{pane_id}",
         "-t",
         source.as_str(),
     ];
@@ -237,11 +241,15 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
         split.push("-b");
     }
     split.push(&observer_command);
-    if let Err(error) = tmux(socket.as_deref(), &split) {
-        // Close only this newly-created window, never an unrelated session/server.
-        let _ = tmux(socket.as_deref(), &["kill-window", "-t", &source]);
-        return Err(error.context("progress split failed"));
-    }
+    let observer = match tmux(socket.as_deref(), &split) {
+        Ok(observer) => observer,
+        Err(error) => {
+            // Close only this newly-created window, never an unrelated session/server.
+            let _ = tmux(socket.as_deref(), &["kill-window", "-t", &source]);
+            return Err(error.context("progress split failed"));
+        }
+    };
+    crate::recovery::write(&path.join("observer-pane"), observer.as_bytes(), false)?;
     let _ = tmux(socket.as_deref(), &["select-pane", "-t", &source]);
     crate::recovery::write(&path.join("layout-ready"), b"ready", false)?;
     let kept = directory.keep();
@@ -298,8 +306,115 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
     Ok(true)
 }
 
+/// Resize only the two-pane window created for this exact launch. A config
+/// command outside the native source process saves the preference for later.
+pub fn refresh_existing_for_root(root: &Path, settings: &crate::settings::Settings) -> Result<()> {
+    let Some(slot) = slot() else {
+        return Ok(());
+    };
+    let Ok(current_pane) = std::env::var("TMUX_PANE") else {
+        return Ok(());
+    };
+    let request = validate_slot(&slot)?;
+    let request_project = crate::project::Project::discover(&request.cwd)?;
+    let request_root = request_project
+        .as_ref()
+        .map(|project| project.root())
+        .unwrap_or(&request.cwd);
+    if request_root.canonicalize()? != root.canonicalize()? {
+        return Ok(());
+    }
+    if !slot.join("layout-ready").exists() {
+        return Ok(());
+    }
+    let source = fs::read_to_string(slot.join("source-pane"))?;
+    if current_pane != source {
+        return Ok(());
+    }
+    let observer = fs::read_to_string(slot.join("observer-pane"))?;
+    let owner: u32 = fs::read_to_string(slot.join("owner"))?.parse()?;
+    ensure!(
+        crate::bridge::process_is_descendant(std::process::id().into(), owner.into())?,
+        "terminal source ownership changed; layout preserved"
+    );
+    let private_socket = slot.join("tmux.sock");
+    let socket = private_socket.exists().then_some(private_socket.as_path());
+    let before = tmux(
+        socket,
+        &[
+            "list-panes",
+            "-t",
+            &source,
+            "-F",
+            "#{pane_id} #{pane_active}",
+        ],
+    )?;
+    let panes = before
+        .lines()
+        .filter_map(|line| line.split_once(' ').map(|(id, _)| id))
+        .collect::<Vec<_>>();
+    ensure!(
+        panes.len() == 2 && panes.contains(&source.as_str()) && panes.contains(&observer.as_str()),
+        "terminal layout changed; only owned two-pane windows can be resized"
+    );
+    let height: usize = tmux(
+        socket,
+        &["display-message", "-p", "-t", &source, "#{window_height}"],
+    )?
+    .parse()?;
+    let desired = settings.progress_rows(height);
+    let current: usize = tmux(
+        socket,
+        &["display-message", "-p", "-t", &observer, "#{pane_height}"],
+    )?
+    .parse()?;
+    if current.abs_diff(desired) <= 1 {
+        return Ok(());
+    }
+    tmux(
+        socket,
+        &["resize-pane", "-t", &observer, "-y", &desired.to_string()],
+    )?;
+    let after = tmux(
+        socket,
+        &[
+            "list-panes",
+            "-t",
+            &source,
+            "-F",
+            "#{pane_id} #{pane_active}",
+        ],
+    )?;
+    ensure!(
+        before == after,
+        "terminal focus or pane ownership changed during resize"
+    );
+    let applied: usize = tmux(
+        socket,
+        &["display-message", "-p", "-t", &observer, "#{pane_height}"],
+    )?
+    .parse()?;
+    let toward_requested = if desired > current {
+        applied >= current && applied <= desired + 1
+    } else {
+        applied <= current && applied + 1 >= desired
+    };
+    ensure!(
+        toward_requested,
+        "tmux resized a different pane; inspect the layout"
+    );
+    Ok(())
+}
+
 fn cleanup(path: &Path, socket: bool) {
-    for name in ["request.json", "owner", "selection.json", "layout-ready"] {
+    for name in [
+        "request.json",
+        "owner",
+        "selection.json",
+        "layout-ready",
+        "source-pane",
+        "observer-pane",
+    ] {
         let _ = fs::remove_file(path.join(name));
     }
     if socket {

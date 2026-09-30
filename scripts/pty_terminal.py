@@ -33,14 +33,20 @@ root=Path.cwd(); (root/(label+'.slot')).write_text(str(slot))
 (root/(label+'.args')).write_text(json.dumps(sys.argv[1:]))
 event={'cwd':str(root),'session_id':label,'todos':[{'content':'AP-01 '+label,'status':'in_progress'}]}
 subprocess.run([os.environ['AP_TEST_BIN'],'bridge','--agent','claude'],input=json.dumps(event),text=True,check=True,stdout=subprocess.DEVNULL)
-while not (root/(label+'.end')).exists():time.sleep(.05)
+resized=False
+while not (root/(label+'.end')).exists():
+ if label=='first' and not resized and (root/'first.resize').exists():
+  subprocess.run([os.environ['AP_TEST_BIN'],'config','set','--pane-size','40'],cwd=root,check=True,stdout=subprocess.DEVNULL)
+  (root/'first.resized').write_text('done')
+  resized=True
+ time.sleep(.05)
 sys.exit(9 if label=='fourth' else 0)
 ''')
     native.chmod(0o755)
     # Actual Unix/WebSocket transport through the Codex proxy; only the producer is a fixture.
     codex=bin/'codex'
     codex.write_text('''#!/usr/bin/env python3
-import json,os,sys,socket,struct,time
+import json,os,sys,socket,struct,subprocess,time
 from pathlib import Path
 a=sys.argv[1:]
 if a==['--version']:print('fixture 1');sys.exit()
@@ -57,7 +63,13 @@ header=b''
 while not header.endswith(b'\\r\\n\\r\\n'):header+=s.recv(1)
 data=json.dumps({'id':1,'method':'thread/start','params':{}}).encode();mask=b'abcd'
 s.sendall(bytes([0x81,0x80|len(data)])+mask+bytes(v^mask[i%4] for i,v in enumerate(data)))
-while not (root/'third.end').exists():time.sleep(.05)
+resized=False
+while not (root/'third.end').exists():
+ if not resized and (root/'third.resize').exists():
+  subprocess.run([os.environ['AP_TEST_BIN'],'config','set','--pane-size','20'],cwd=root,check=True,stdout=subprocess.DEVNULL)
+  (root/'third.resized').write_text('done')
+  resized=True
+ time.sleep(.05)
 s.close()
 sys.exit(7)
 ''')
@@ -88,7 +100,7 @@ sys.exit(7)
     for key in ['TMUX','TMUX_PANE','AP_TERMINAL_SLOT']:env.pop(key,None)
     try:
         for label in ['first','second','third']:
-            if label=='third':subprocess.run([str(ap),'config','set','--position','above'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
+            if label=='third':subprocess.run([str(ap),'config','set','--position','above','--pane-size','40'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
             master,slave=os.openpty();handles.extend([master,slave])
             masters.append(master)
             fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',40,120,0,0))
@@ -107,7 +119,23 @@ sys.exit(7)
             assert len(panes)==2,panes
             source=next(p.split()[0] for p in panes if p.split()[1]=='1')
             observer=next(p.split()[0] for p in panes if p.split()[1]=='0')
-            assert next(p.split()[2] for p in panes if p.split()[1]=='0')=='8',panes
+            window_height=int(call('display-message','-p','-t',source,'#{window_height}'))
+            expected_rows=(window_height*(40 if label=='third' else 30)+50)//100
+            assert int(next(p.split()[2] for p in panes if p.split()[1]=='0'))==expected_rows,panes
+            if label=='first':
+                (root/'first.resize').touch()
+                until(lambda:(root/'first.resized').exists())
+                resized_panes=call('list-panes','-t','ap','-F','#{pane_id} #{pane_active} #{pane_height}').splitlines()
+                assert int(next(p.split()[2] for p in resized_panes if p.split()[1]=='0'))==(window_height*40+50)//100,resized_panes
+                assert next(p.split()[0] for p in resized_panes if p.split()[1]=='1')==source
+                subprocess.run([str(ap),'config','set','--pane-size','30'],cwd=root,env=env,check=True,stdout=subprocess.DEVNULL)
+            if label=='third':
+                (root/'third.resize').touch()
+                until(lambda:(root/'third.resized').exists())
+                resized_panes=call('list-panes','-t','ap','-F','#{pane_id} #{pane_active} #{pane_height}').splitlines()
+                assert int(next(p.split()[2] for p in resized_panes if p.split()[1]=='0'))==(window_height*20+50)//100,resized_panes
+                assert resized_panes[0].split()[0]==observer
+                assert next(p.split()[0] for p in resized_panes if p.split()[1]=='1')==source
             assert panes[0].split()[1]==('0' if label=='third' else '1'),panes
             until(lambda:label in call('capture-pane','-p','-t',observer))
             # Actual pane resize keeps the observer alive and its source unchanged.

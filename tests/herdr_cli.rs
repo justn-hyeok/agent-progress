@@ -42,15 +42,19 @@ elif a==['pane','process-info','--pane','w1:p3']:
 elif a==['tab','list','--workspace','w1']:
  result={} if os.environ.get('AP_TEST_UNKNOWN_TABS') else {'tabs':[{'tab_id':'w1:t1','label':os.environ.get('AP_TEST_TAB_LABEL','work')}]}
 elif a[:2]==['pane','split']:
- assert a[2:8]==['--pane','w1:p1','--direction','down','--ratio','0.70'] and a[-1]=='--no-focus'
+ expected='0.60' if os.environ.get('AP_TEST_SIZE')=='40' else '0.70'
+ assert a[2:8]==['--pane','w1:p1','--direction','down','--ratio',expected] and a[-1]=='--no-focus'
  result={'pane':{'pane_id':'w1:p3'}}
 elif a==['pane','layout','--pane','w1:p1']:
  calls=[json.loads(x) for x in open(os.environ['AP_TEST_CALLS'])]
+ split_at=max((i for i,x in enumerate(calls) if x[:2]==['pane','split']),default=-1)
+ calls=calls[split_at+1:]
  swapped=any(x[:2]==['pane','swap'] for x in calls)
- ratio=.9 if os.environ.get('AP_TEST_NARROW') else .7
- if swapped:
-  for x in calls:
-   if x[:2]==['pane','resize']:ratio-=min(.5,float(x[x.index('--amount')+1]))
+ ratio=.9 if os.environ.get('AP_TEST_NARROW') else (.6 if os.environ.get('AP_TEST_SIZE')=='40' else .7)
+ for x in calls:
+  if x[:2]==['pane','resize']:
+   step=min(.5,float(x[x.index('--amount')+1]))
+   ratio+=step if x[x.index('--direction')+1]=='down' else -step
  top=round(ratio*40)
  source={'x':0,'y':top if swapped else 0,'width':80,'height':40-top if swapped else top}
  observer={'x':0,'y':0 if swapped else top,'width':80,'height':top if swapped else 40-top}
@@ -115,8 +119,8 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
         serde_json::from_slice::<Value>(&above.stdout).unwrap()["session"],
         session.to_string()
     );
-    let calls = fs::read_to_string(calls).unwrap();
-    assert!(!calls.contains("--current"));
+    let calls_text = fs::read_to_string(&calls).unwrap();
+    assert!(!calls_text.contains("--current"));
     assert!(
         !dir.path().join(".agent-progress").exists(),
         "--once must not write state"
@@ -138,6 +142,71 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
         String::from_utf8_lossy(&opened.stderr)
     );
     assert!(String::from_utf8_lossy(&opened.stdout).contains("w1:p3 ← w1:p1"));
+    let live_size = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["config", "set", "--pane-size", "40"])
+        .current_dir(dir.path())
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("HERDR_ENV", "1")
+        .env("HERDR_PANE_ID", "w1:p1")
+        .env("AP_TEST_CALLS", &calls)
+        .env("AP_TEST_ROLLOUT", &path)
+        .output()
+        .unwrap();
+    assert!(
+        live_size.status.success(),
+        "{}",
+        String::from_utf8_lossy(&live_size.stderr)
+    );
+    let requests: Vec<Value> = fs::read_to_string(&calls)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(requests.iter().any(|args| {
+        args[0] == "pane"
+            && args[1] == "resize"
+            && args
+                .as_array()
+                .is_some_and(|parts| parts.iter().any(|value| value == "up"))
+    }));
+    let minimum = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["config", "set", "--pane-size", "10"])
+        .current_dir(dir.path())
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("HERDR_ENV", "1")
+        .env("HERDR_PANE_ID", "w1:p1")
+        .env("AP_TEST_CALLS", &calls)
+        .env("AP_TEST_ROLLOUT", &path)
+        .output()
+        .unwrap();
+    assert!(
+        minimum.status.success(),
+        "{}",
+        String::from_utf8_lossy(&minimum.stderr)
+    );
+    assert_eq!(
+        agent_progress::settings::load(dir.path())
+            .unwrap()
+            .pane_size_percent,
+        10
+    );
+    // Saved from another terminal: no foreign pane resize; the next opening uses it.
+    assert!(
+        Command::new(env!("CARGO_BIN_EXE_ap"))
+            .args(["config", "set", "--pane-size", "40"])
+            .current_dir(dir.path())
+            .env("HERDR_ENV", "0")
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
     // New top placement uses the same explicit source with the inverse split ratio.
     fs::remove_file(
         dir.path()
@@ -152,14 +221,21 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
         )
         .env("HERDR_ENV", "1")
         .env("AP_TEST_TOP", "1")
+        .env("AP_TEST_SIZE", "40")
         .env("AP_TEST_CALLS", dir.path().join("calls.jsonl"))
         .env("AP_TEST_ROLLOUT", &path)
         .output()
         .unwrap();
     assert!(
         top.status.success(),
-        "{}",
-        String::from_utf8_lossy(&top.stderr)
+        "{}; recent mock calls: {:?}",
+        String::from_utf8_lossy(&top.stderr),
+        fs::read_to_string(&calls)
+            .unwrap()
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
     );
     let receipt: Value = serde_json::from_slice(
         &fs::read(
@@ -184,6 +260,7 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
         )
         .env("HERDR_ENV", "1")
         .env("AP_TEST_NARROW", "1")
+        .env("AP_TEST_SIZE", "40")
         .env("AP_TEST_CALLS", &narrow_calls)
         .env("AP_TEST_ROLLOUT", &path)
         .output()
@@ -203,7 +280,7 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
             .iter()
             .filter(|args| args[0] == "pane" && args[1] == "resize")
             .count(),
-        2
+        3
     );
     for (flag, value) in [
         ("AP_TEST_UNKNOWN_TABS", "1"),

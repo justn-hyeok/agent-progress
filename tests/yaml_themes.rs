@@ -37,6 +37,10 @@ states:
     )
     .unwrap();
     let settings = settings::load(root.path()).unwrap();
+    assert_eq!(
+        settings.pane_size_percent, 30,
+        "older YAML keeps the default size"
+    );
     assert_eq!(settings.palette(None).unwrap().fill, Color::Rgb(48, 72, 96));
     assert_eq!(
         settings
@@ -59,6 +63,8 @@ states:
         "background_brightness: 0",
         "preset: missing",
         "states: {unknown: {fill: '#123456'}}",
+        "pane_size_percent: 9",
+        "pane_size_percent: 51",
     ] {
         fs::write(settings::yaml_path(root.path()), text).unwrap();
         assert!(settings::load(root.path()).is_err());

@@ -10,7 +10,7 @@ the user to register a task, copy a session ID, or maintain a second checklist.
 The pane reflects reports; it does not supervise work or certify completion.
 
 Check `ap --version` and relevant `--help` first. These instructions describe
-ap 1.2.5; check preview and doctor fields before relying on them. If the binary
+ap 1.2.6; check preview and doctor fields before relying on them. If the binary
 is missing, install it only when installation is within the request. On macOS
 Apple Silicon, the published Homebrew path is:
 
@@ -55,8 +55,12 @@ reattach a changed native session. Preserve busy or unowned panes.
 
 `ap open --position above` moves this opening; `ap config set --position below`
 saves future placement. An owned vertical sibling swaps position and sizes.
-Saving the preference alone does not move the live pane. Color and brightness
-changes belong to `$ap-theme`.
+`ap setup` chooses the first project-local pane height in an interactive terminal;
+`ap config set --pane-size 25` changes it later (10–50 percent). In the exact
+source pane, a managed observer is resized immediately without opening a new
+pane. Herdr's measured minimum wins on small terminals. Outside the source,
+the saved size applies on the next open. Color and brightness belong to
+`$ap-theme`.
 
 Use `ap doctor --agent NAME` for the known agent/source. Doctor's default JSON
 exit is 0 even when it reports unhealthy checks; add `--strict` when a failing

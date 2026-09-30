@@ -6,7 +6,7 @@ description: Resume or recover agent-progress product state, inspect saved progr
 # ap-recover — saved progress
 
 Check `ap --version` and the relevant command's `--help`; these instructions
-describe ap 1.2.5. Select the requested project's own manifest or use
+describe ap 1.2.6. Select the requested project's own manifest or use
 `--project /explicit/ap.project.json`. Never choose another project's newest
 state or infer the correct session from recency.
 

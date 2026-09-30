@@ -2,6 +2,7 @@
 # Quote hex colors: a bare # starts a YAML comment.
 schema: 1
 position: above
+pane_size_percent: 30 # progress pane height; 10 .. 50, Herdr minimum may apply
 auto_open: true
 preset: my_forest
 background_brightness: 1.0 # 0.25 .. 2.0; only background channels are scaled

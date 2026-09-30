@@ -5,7 +5,11 @@ use agent_progress::{
 };
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::{path::PathBuf, process::ExitCode};
+use std::{
+    io::{self, IsTerminal, Write},
+    path::PathBuf,
+    process::ExitCode,
+};
 use uuid::Uuid;
 
 #[derive(Parser)]
@@ -48,11 +52,13 @@ enum Command {
         #[arg(long, value_parser=["zsh","bash","fish"], default_value="zsh")]
         shell: String,
     },
-    /// Project-local colors, placement and automatic Herdr observation.
+    /// Project-local pane size, colors, placement and automatic observation.
     Config {
         #[command(subcommand)]
         action: PresentationAction,
     },
+    /// First project-local setup for the progress-pane height.
+    Setup,
     /// Start an existing native CLI; observe Codex's frontend connection without disabling its shared server.
     Launch {
         #[arg(long,value_parser=["codex","claude","opencode"],default_value="codex")]
@@ -311,6 +317,8 @@ enum ProductAction {
 enum PresentationAction {
     Show,
     Reset,
+    /// Choose the progress-pane height on first use without changing other settings.
+    Setup,
     /// Create ui.yaml from current settings without replacing an existing YAML file.
     InitYaml,
     /// List built-in and user-defined palette names.
@@ -320,6 +328,9 @@ enum PresentationAction {
 
 #[derive(clap::Args)]
 struct PresentationOptions {
+    /// Progress-pane height as a percentage of its vertical split (10–50).
+    #[arg(long)]
+    pane_size: Option<u8>,
     #[arg(long)]
     preset: Option<String>,
     #[arg(long)]
@@ -344,6 +355,20 @@ struct PresentationOptions {
     warning: Option<String>,
 }
 
+fn prompt_pane_size(current: u8) -> Result<u8> {
+    anyhow::ensure!(
+        io::stdin().is_terminal() && io::stdout().is_terminal(),
+        "interactive terminal required; use ap config set --pane-size PERCENT"
+    );
+    println!("진행 창 높이 · 현재 {current}%");
+    println!("1) 최소 10%   2) 작게 20%   3) 보통 30%   4) 크게 40%");
+    print!("번호 또는 10–50 사이 비율 (Enter: 현재 값): ");
+    io::stdout().flush()?;
+    let mut choice = String::new();
+    anyhow::ensure!(io::stdin().read_line(&mut choice)? > 0, "setup cancelled");
+    agent_progress::settings::parse_pane_size_choice(&choice, current)
+}
+
 fn run(cli: Cli) -> Result<()> {
     let command = cli.command.unwrap_or(Command::Follow {
         pane: None,
@@ -354,6 +379,12 @@ fn run(cli: Cli) -> Result<()> {
         project: None,
         once: false,
     });
+    let command = match command {
+        Command::Setup => Command::Config {
+            action: PresentationAction::Setup,
+        },
+        other => other,
+    };
     let command = match command {
         Command::Compatibility { agent, live, model } => {
             let agents = if agent.is_empty() {
@@ -395,8 +426,13 @@ fn run(cli: Cli) -> Result<()> {
                 agent_progress::settings::load(root)?
             };
             let mut changed = true;
+            let mut layout_changed = false;
             match action {
                 PresentationAction::Show => changed = false,
+                PresentationAction::Setup => {
+                    settings.pane_size_percent = prompt_pane_size(settings.pane_size_percent)?;
+                    layout_changed = true;
+                }
                 PresentationAction::InitYaml => {
                     agent_progress::settings::init_yaml(root)?;
                     println!("{}", agent_progress::settings::yaml_path(root).display());
@@ -409,9 +445,13 @@ fn run(cli: Cli) -> Result<()> {
                     );
                     return Ok(());
                 }
-                PresentationAction::Reset => settings = Default::default(),
+                PresentationAction::Reset => {
+                    settings = Default::default();
+                    layout_changed = true;
+                }
                 PresentationAction::Set(options) => {
                     let PresentationOptions {
+                        pane_size,
                         preset,
                         brightness,
                         position,
@@ -424,6 +464,10 @@ fn run(cli: Cli) -> Result<()> {
                         metadata,
                         warning,
                     } = *options;
+                    if let Some(value) = pane_size {
+                        settings.pane_size_percent = value;
+                        layout_changed = true;
+                    }
                     if let Some(preset) = preset {
                         settings.preset = preset;
                         settings.theme = Default::default();
@@ -433,6 +477,7 @@ fn run(cli: Cli) -> Result<()> {
                     }
                     if let Some(value) = position {
                         settings.position = value;
+                        layout_changed = true;
                     }
                     if let Some(value) = auto_open {
                         settings.auto_open = value;
@@ -455,6 +500,12 @@ fn run(cli: Cli) -> Result<()> {
             }
             if changed {
                 agent_progress::settings::save(root, &settings)?;
+                if layout_changed {
+                    herdr::refresh_existing_for_root(root)
+                        .context("preference saved, but live Herdr layout update failed")?;
+                    agent_progress::terminal::refresh_existing_for_root(root, &settings)
+                        .context("preference saved, but live tmux layout update failed")?;
+                }
             }
             println!("{}", serde_json::to_string_pretty(&settings)?);
             return Ok(());

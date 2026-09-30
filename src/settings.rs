@@ -209,6 +209,8 @@ impl Theme {
 pub struct Settings {
     pub schema: u32,
     pub position: Position,
+    /// Percentage of the source/progress split given to the progress pane.
+    pub pane_size_percent: u8,
     pub auto_open: bool,
     pub preset: String,
     pub background_brightness: f64,
@@ -221,6 +223,7 @@ impl Default for Settings {
         Self {
             schema: 1,
             position: Position::Below,
+            pane_size_percent: 30,
             auto_open: true,
             preset: "signal".into(),
             background_brightness: 1.0,
@@ -283,6 +286,10 @@ impl Settings {
     pub fn validate(&self) -> Result<()> {
         ensure!(self.schema == 1, "unsupported presentation schema");
         ensure!(
+            (10..=50).contains(&self.pane_size_percent),
+            "pane size must be between 10 and 50 percent"
+        );
+        ensure!(
             self.background_brightness.is_finite()
                 && (0.25..=2.0).contains(&self.background_brightness),
             "background brightness must be between 0.25 and 2.0"
@@ -305,6 +312,31 @@ impl Settings {
         }
         Ok(())
     }
+
+    pub fn source_split_ratio(&self) -> String {
+        format!("{:.2}", 1.0 - f64::from(self.pane_size_percent) / 100.0)
+    }
+
+    pub fn progress_rows(&self, total_rows: usize) -> usize {
+        ((total_rows * usize::from(self.pane_size_percent) + 50) / 100)
+            .clamp(1, total_rows.saturating_sub(3).max(1))
+    }
+}
+
+pub fn parse_pane_size_choice(choice: &str, current: u8) -> Result<u8> {
+    let size = match choice.trim() {
+        "" => current,
+        "1" => 10,
+        "2" => 20,
+        "3" => 30,
+        "4" => 40,
+        value => value.parse::<u8>()?,
+    };
+    ensure!(
+        (10..=50).contains(&size),
+        "pane size must be between 10 and 50 percent"
+    );
+    Ok(size)
 }
 pub fn load(root: &Path) -> Result<Settings> {
     ensure!(

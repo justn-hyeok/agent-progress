@@ -9,6 +9,9 @@ brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progres
 brew install justn-hyeok/agent-progress/agent-progress
 ```
 
+첫 사용 시 프로젝트 루트에서 `ap setup`으로 진행 창 높이를 고른다.
+Homebrew 설치 단계에서는 입력을 받지 않으며, 설정하지 않으면 30% 기본값을 쓴다.
+
 Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치한다.
 압축 파일의 `skills/`에는 `$ap`, `$ap-connect`, `$ap-theme`, `$ap-recover`
 Codex 스킬이 들어 있다. Homebrew는 이를 formula의 `share/agent-progress/skills/`에

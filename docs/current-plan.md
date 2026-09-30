@@ -5,7 +5,7 @@
 - [x] [AP-06/pane-size] Add project-local first-use size selection and `ap config set --pane-size` with backward-compatible defaults.
 - [x] [AP-09/pane-size] Apply size immediately to the exact owned Herdr/tmux observer and verify minimum, position, focus and isolation.
 - [x] [AP-19/pane-size-candidate] Prepare and locally verify the 1.2.6 archive, Homebrew formula, skills and first-run documentation.
-- [ ] [AP-19/pane-size-release] Publish and install 1.2.6 only after release authorization; keep 1.2.5 immutable.
+- [x] [AP-19/pane-size-release] Publish and install 1.2.6 after release authorization; keep 1.2.5 immutable.
 
 The first setup runs in the project root with `ap setup` (also `ap config setup`),
 offering the measured Herdr minimum 10%, 20%, 30% and 40%, plus direct 10–50%
@@ -23,15 +23,30 @@ that observed current-version minimum. Mocked exact-session Herdr tests cover
 new below/above splits, immediate 40% and 10% updates, protected layout and
 focus. Real tmux/PTY tests cover initial and live sizes both below and above.
 
-Local candidate: `dist/agent-progress-1.2.6-macos-arm64.tar.gz`,
+Verified candidate: `dist/agent-progress-1.2.6-macos-arm64.tar.gz`,
 SHA-256 `f52e82a53f8a77766de23039637434596eb818f9221926322a398f31dd905aea`.
 The repack matched byte-for-byte. Full Rust tests, fmt, Clippy, four source
 skill validations, release-binary first-run/presentation/tmux PTY scenarios,
 the extracted archive's first-run UI, and exact archive smoke passed. The
 archive smoke used disposable authenticated Codex/Claude/OpenCode producers,
 then verified update, rollback and uninstall with product/unrelated data
-preserved. This is local/fixture evidence; no 1.2.6 GitHub tag, published
-assets, Homebrew CI or installed upgrade is claimed.
+preserved. This is local/fixture evidence, distinct from public distribution
+and human acceptance. Independent `codex review` could not complete because
+the local review CLI recursively invoked another review with an unsupported
+default model; the targeted manual diff review and required checks passed.
+
+Published release: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.6.
+Annotated tag/source 2cd7e52fa45c95b607a4c4f778d8e26d4dde13e6 passed
+Rust CI (source 36672311615; tag 36672577686). The public archive and
+checksum asset matched the verified local SHA-256. Formula commit
+cd60db6894f8094784ce2acf2abf437701f5ea48 passed Homebrew install CI
+36672712554 and Rust CI 36672712557. This Mac upgraded to Homebrew 1.2.6;
+installed binary bytes and four `share/agent-progress/skills` folders matched
+the tested source, and `brew test`, strict audit, installed doctor and installed
+first-run PTY scenario passed. The prior 1.2.5 Cellar copy was retained.
+Local Codex skills were backed up at
+`/Users/justn/.codex/ap-skill-v126-backup.i5UxwO`, updated to source and
+validated. Running user panes and native agent settings were not changed.
 
 ## OpenCode live QA reliability — 2026-09-30
 

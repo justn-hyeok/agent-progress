@@ -1,14 +1,20 @@
 # Release handoff
 
-Unpublished 1.2.6 pane-size candidate: `ap setup` chooses project-local 10–50%
+1.2.6 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.6.
+`ap setup` chooses project-local 10–50%
 progress height, and `ap config set --pane-size N` changes it later. Exact
 owned Herdr/tmux observers resize immediately from their source pane; another
 terminal saves the preference for the next opening. Existing settings retain
 30%. Installed Herdr clamped a 2% request to its 10% minimum in a disposable
 owned pane. Full local Rust, PTY, skill and exact archive smoke passed; archive
 SHA-256 is f52e82a53f8a77766de23039637434596eb818f9221926322a398f31dd905aea.
-The 1.2.5 public release is unchanged. See the first section of
-`docs/current-plan.md` for verification and the remaining publication gate.
+Source/tag 2cd7e52fa45c95b607a4c4f778d8e26d4dde13e6 and formula
+cd60db6894f8094784ce2acf2abf437701f5ea48 passed their GitHub CI.
+The published archive matched the local checksum. This Mac upgraded via
+Homebrew; installed binary, skills, `brew test/audit`, doctor and first-run
+setup passed. Local Codex skills were backed up/upgraded; the prior 1.2.5
+Cellar copy remains. The 1.2.5 public release itself is unchanged. See the
+first section of `docs/current-plan.md` for exact evidence and limits.
 
 OpenCode QA follow-up: the native fixture now requires a successful
 `todowrite` call instead of accepting a text-only answer, asks for an

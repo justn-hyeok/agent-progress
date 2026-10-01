@@ -1,13 +1,16 @@
 # Release handoff
 
-1.2.8 hotfix candidate: repeated native-hook openings no longer reset a
+1.2.8 was published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.8
+and installed on this Mac via Homebrew. Repeated native-hook openings no longer reset a
 manually adjusted Herdr progress pane to the saved size. The 1.2.7 behavior
 was reproduced with an exact-pane CLI fixture; explicit config size changes
 remain live. The local package passed authenticated three-agent smoke and a
 byte-identical repack (SHA-256
 ed52a7b7ee66e87d0cfafd3ea3bb3047291d9ad49664d8968d1953d0419ef2e0).
-See the first section of `docs/current-plan.md` for verification
-and publication state. Existing user panes have not been modified.
+The published archive matched the local candidate. Formula and Rust CI,
+installed binary/skills, `brew test`, strict audit and installed PTY passed.
+See the first section of `docs/current-plan.md` for exact verification and
+publication evidence. Existing user panes have not been modified.
 
 
 1.2.7 was published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.7

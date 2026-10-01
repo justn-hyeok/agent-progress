@@ -4,7 +4,7 @@
 
 - [x] [AP-06/pane-growth] Reproduce a manually shrunk Herdr observer growing after an automatic reopen, and preserve its live height on ordinary reuse.
 - [x] [AP-09/pane-growth] Verify idle and active observer reuse, explicit config resize, full Rust regression and terminal lifecycle.
-- [ ] [AP-19/pane-growth] Package, publish and install the verified 1.2.8 hotfix without altering the 1.2.7 release or the separate Linux candidate.
+- [x] [AP-19/pane-growth] Package, publish and install the verified 1.2.8 hotfix without altering the 1.2.7 release or the separate Linux candidate.
 
 The 1.2.7 source reapplied `pane_size_percent` whenever a native hook reopened
 an already-owned observer. A mocked Herdr contract reproduced a saved 40% size
@@ -21,7 +21,23 @@ The repack is byte-identical. Locked Rust tests, fmt, Clippy, release build,
 setup/presentation/real-tmux PTY, and four skill validators passed. Exact
 archive smoke passed authenticated Codex/Claude/OpenCode producers, temporary
 upgrade, rollback and uninstall, retaining product and unrelated data. This is
-local evidence; GitHub CI, public asset and installed Homebrew proof follow.
+local evidence; public and installed proof follows.
+
+Published 1.2.8: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.8.
+Annotated tag/source `f786a86ee7dfc4511f45af32d0ddd456ac35d5c9` passed
+branch Rust CI `36810999534` and tag Rust CI `36811211943`; the downloaded
+archive and checksum asset were byte-identical to the local candidate. Formula
+commit `8a7ae24e9009ee3a18d87c670507e613f1998ca1` passed Homebrew install
+CI `36811449347` and Rust CI `36811449351`. This Mac upgraded through
+Homebrew from 1.2.7 to 1.2.8, retaining previous Cellar copies. Installed
+`ap` matched the public package binary SHA-256
+`02f9559dadd896eb0ecc50b76dab369ac091e0984cc6c9595711abfba69eb252`.
+`brew test`, strict audit, installed setup/tmux PTY and four local Codex skill
+validators passed. Installed skills matched the packaged bytes; the prior
+copies were backed up at `/Users/justn/.codex/ap-skill-v128-backup.KpEdZx`.
+Running user panes were left undisturbed. The separate Linux 1.3 candidate
+remains unpublished, and 1.2.8 is macOS arm64 only without Apple signing or
+notarization.
 
 ## Empty-session display and minimum default — 2026-10-01
 

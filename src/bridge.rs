@@ -60,7 +60,7 @@ fn safe_text(value: &str) -> String {
 
 fn markdown_plan(message: &str) -> String {
     // Do not copy surrounding assistant prose, tool output, or credentials into a checkpoint.
-    let Some((_, steps)) = live::markdown_plan(message) else {
+    let Some((goal, steps)) = live::markdown_plan(message) else {
         return String::new();
     };
     let rows = steps
@@ -75,7 +75,10 @@ fn markdown_plan(message: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    format!("### 진행 계획\n{rows}")
+    match goal {
+        Some(goal) => format!("### 진행 계획\n목표: {}\n{rows}", safe_text(&goal)),
+        None => format!("### 진행 계획\n{rows}"),
+    }
 }
 
 pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Result<Value> {
@@ -387,10 +390,19 @@ fn register(
     // A shared daemon inherits its first client's pane environment. Environment alone
     // must never associate another thread with that pane. Prove the native process
     // is an ancestor of this hook before reporting its session identity.
-    ensure!(
-        sender_is_descendant(pid)?,
-        "hook is not owned by this pane process; use Codex embedded mode (--no-daemon) for native pane hooks"
-    );
+    if !sender_is_descendant(pid)? {
+        if agent == "codex" {
+            // A shared server is an expected unsupported identity path. Retain
+            // diagnostics, but never register its inherited pane or fail an
+            // otherwise valid native hook just because observation is pending.
+            result["source_identity_unverified"] = json!(true);
+            result["pending"] = json!(
+                "hook is not owned by this pane process; use ap launch --agent codex for shared-server observation or Codex --no-daemon"
+            );
+            return Ok(result);
+        }
+        anyhow::bail!("hook is not owned by this pane process");
+    }
     let registration = Registration {
         schema: 2,
         agent: agent.into(),

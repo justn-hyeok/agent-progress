@@ -1,5 +1,52 @@
 # Current release plan
 
+## Goal/plan checklist and native hook recovery — 2026-10-01
+
+Understood as: preserve the existing agent goal and plan in an automatically
+derived checklist, and repair the repeated project-local hook failure without
+attaching a shared daemon to an unverified source pane.
+
+- [x] [AP-05/goal-plan-fix] Preserve explicit goal/plan through Claude and OpenCode checkpoints and show their actual session checklist alongside product progress.
+- [x] [AP-09/hook-failure-fix] Keep Codex shared-server ownership refusal diagnostic and nonfatal, without registering an unowned pane.
+- [x] [AP-09/goal-plan-hook-verify] Verify goal changes, state updates, replay and terminal rendering, plus full Rust regressions and the hook CLI contract.
+- [x] [AP-06/local-hook-runtime] Back up and update the stale development binary used by this project's hooks, then verify the exact active hook path.
+
+Three new regressions failed before the patch and passed after it: discarded
+Markdown goal, product-mode hidden agent goal/checklist, and fatal Codex
+shared-server registration refusal. The full locked Rust suite, fmt, strict
+Clippy and diff checks passed. Native producer authentication and human
+acceptance are not claimed by those fixture checks. The complete AP-05
+acceptance item remains separate from these child steps.
+
+Live diagnosis: the project's trusted `.codex/config.toml` calls
+the project's `target/release/ap`, which was an old 1.1.0
+development binary. Its local status file recorded `hook is not owned by
+this pane process` for UserPromptSubmit. Homebrew's 1.2.8 binary is a
+different file. Global brgr hooks independently returned valid JSON/exit 0
+in the diagnostic probes. The separate brgr QA callback routing problem
+is outside this code change.
+
+Local runtime applied: the old 1.1.0 executable was preserved byte-for-byte at
+`target/release/ap.before-goal-plan-hooks-20261001-e78b2df33273`.
+The existing development hook path was atomically updated to this worktree's
+unpublished release-mode build (package version 1.2.8), SHA-256
+`0a32e28c56a336ef37b083f770e66c688217b34ba10f37280ff39474203089fc`.
+Hook definitions, native trust, global settings, Homebrew, source sessions and
+user panes were not replaced. Manual invocation of all three exact project
+hook events with the current daemon session input returned exit 0 and valid
+continue JSON, preserving the unverified-source diagnostic without a binding.
+Evidence: `.agent-progress/local-hook-verification.json`.
+
+The applied binary also passed isolated Claude/OpenCode goal-and-plan
+fixtures for state changes, goal-only changes with identical steps and
+new-process replay. Evidence: `.agent-progress/goal-plan-runtime.json`.
+The release-mode presentation and product PTY scripts passed, including
+terminal restoration and separate product versus session completion.
+Future native UI hook events and live authenticated producers have not been
+independently exercised by those probes. No publication or full AP-05
+acceptance is implied. A shareable summary is in
+`verification/goal-plan-hooks-20261001.md`; private runtime evidence stays local.
+
 ## Repeated pane growth hotfix — 2026-10-01
 
 - [x] [AP-06/pane-growth] Reproduce a manually shrunk Herdr observer growing after an automatic reopen, and preserve its live height on ordinary reuse.

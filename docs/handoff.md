@@ -1,5 +1,18 @@
 # Release handoff
 
+Unpublished local fix in `agent-progress-goal-plan-hooks-20261001`: explicit
+Claude/OpenCode goal-and-plan checkpoints retain the goal, and product-mode
+panes expose the agent's actual goal/checklist alongside the separate product
+progress. A Codex hook whose shared server cannot prove source ancestry keeps
+a pending diagnostic and returns normally without publishing a pane binding.
+Three regressions failed before the change and passed afterward; full locked
+Rust, fmt, strict Clippy, release build and presentation/product PTY passed.
+The stale 1.1.0 project-hook development executable was backed up and atomically
+updated. All three exact hook-command probes returned exit 0/continue JSON;
+isolated Claude/OpenCode goal changes, state updates and new-process replay
+passed with the applied binary. See the first current-plan section for exact
+evidence and limits. This is not a published release or full AP-05 acceptance.
+
 1.2.8 was published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.8
 and installed on this Mac via Homebrew. Repeated native-hook openings no longer reset a
 manually adjusted Herdr progress pane to the saved size. The 1.2.7 behavior

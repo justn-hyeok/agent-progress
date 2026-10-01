@@ -158,6 +158,60 @@ fn compact_selection_detail_help_and_filters_still_work() {
 }
 
 #[test]
+fn product_dashboard_keeps_the_agent_goal_and_checklist_visible() {
+    let root = tempdir().unwrap();
+    fs::write(
+        root.path().join("ap.project.json"),
+        serde_json::json!({
+            "schema":1,"project_id":Uuid::new_v4(),"objective":"제품 전체 목표","roadmap":"plan.md"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("plan.md"),
+        "- [ ] AP-01 로드맵 작업\n- [ ] AP-02 후속 제품 작업\n",
+    )
+    .unwrap();
+    let mut source = Snapshot::empty(Uuid::new_v4(), root.path().display().to_string());
+    source.set_goal(
+        Goal {
+            id: "native-goal".into(),
+            objective: "세션의 실제 목표".into(),
+            status: "active".into(),
+        },
+        "",
+    );
+    source
+        .apply_plan(
+            vec![
+                ("실제 구조 확인".into(), StepState::Done),
+                ("실제 구현".into(), StepState::Active),
+                ("실제 검증".into(), StepState::Pending),
+            ],
+            "에이전트 계획",
+            "now",
+            "",
+        )
+        .unwrap();
+    let projected = Project::discover(root.path())
+        .unwrap()
+        .unwrap()
+        .project(&source)
+        .unwrap();
+    let original = serde_json::to_vec(&projected).unwrap();
+    let output = screen(&projected, &mut View::default(), 100, 14);
+    assert!(output.contains("제품 전체 목표"));
+    assert!(output.contains("0% · 0/2"));
+    assert!(output.contains("세션의 실제 목표"), "{output}");
+    assert!(output.contains("세션 체크리스트 · 1/3"), "{output}");
+    for title in ["실제 구조 확인", "실제 구현", "실제 검증"] {
+        assert!(output.contains(title), "{output}");
+    }
+    assert_eq!(serde_json::to_vec(&projected).unwrap(), original);
+}
+
+#[test]
 fn compact_variants_keep_warning_and_progress_and_fit_cjk_glyphs() {
     let s = sample();
     for (w, h) in [

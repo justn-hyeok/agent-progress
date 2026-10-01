@@ -108,6 +108,152 @@ fn fixture(root: &std::path::Path) {
 }
 
 #[test]
+fn explicit_goal_and_plan_survive_bridge_updates_and_resume() {
+    for agent in ["claude", "opencode"] {
+        let root = tempdir().unwrap();
+        let event = |goal: &str, mark: &str| {
+            json!({
+                "cwd":root.path(),"session_id":"goal-plan-contract",
+                "last_assistant_message":format!("unrelated-secret\n### 진행 계획\n목표: {goal}\n- [x] 구조 확인\n- [{mark}] API 구현\n- [ ] 검증")
+            })
+        };
+        let first = bridge::ingest(agent, &event("로그인 완성", ">"), Some(root.path())).unwrap();
+        let path = std::path::PathBuf::from(first["rollout"].as_str().unwrap());
+        let mut feed = Feed::open(path.clone(), None, None).unwrap();
+        feed.refresh_all().unwrap();
+        assert_eq!(
+            feed.snapshot.goal.as_ref().unwrap().objective,
+            "로그인 완성"
+        );
+        assert_eq!(feed.snapshot.plan_goal.as_deref(), Some("로그인 완성"));
+        assert_eq!(feed.snapshot.counts(), (1, 3));
+        let id = feed.snapshot.entries[1].id;
+        let unchanged = fs::read(&path).unwrap();
+        bridge::ingest(agent, &event("로그인 완성", ">"), Some(root.path())).unwrap();
+        assert_eq!(unchanged, fs::read(&path).unwrap());
+        bridge::ingest(agent, &event("로그인 완성", "x"), Some(root.path())).unwrap();
+        feed.refresh_all().unwrap();
+        assert_eq!(feed.snapshot.counts(), (2, 3));
+        assert_eq!(feed.snapshot.entries[1].id, id);
+        bridge::ingest(agent, &event("가입 완성", "x"), Some(root.path())).unwrap();
+        let mut resumed = Feed::open(path.clone(), None, None).unwrap();
+        resumed.refresh_all().unwrap();
+        assert_eq!(resumed.snapshot.session, feed.snapshot.session);
+        assert_eq!(
+            resumed.snapshot.goal.as_ref().unwrap().objective,
+            "가입 완성"
+        );
+        assert_eq!(resumed.snapshot.counts(), (2, 3));
+        assert_eq!(
+            resumed
+                .snapshot
+                .archives
+                .last()
+                .unwrap()
+                .goal
+                .as_ref()
+                .unwrap()
+                .objective,
+            "로그인 완성"
+        );
+        assert!(
+            !fs::read_to_string(path)
+                .unwrap()
+                .contains("unrelated-secret")
+        );
+    }
+}
+
+#[test]
+fn shared_daemon_codex_hook_is_nonfatal_and_never_registers_an_unowned_pane() {
+    use std::{
+        io::Write,
+        os::unix::fs::PermissionsExt,
+        process::{Command, Stdio},
+    };
+    let root = tempdir().unwrap();
+    let bin = root.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let mock = bin.join("herdr");
+    fs::write(
+        &mock,
+        r#"#!/usr/bin/env python3
+import sys,json,os
+a=sys.argv[1:]
+if a==['agent','get','w1:p1']:
+ r={'agent':{'agent':'codex','terminal_id':'unowned','foreground_cwd':os.environ['AP_TEST_ROOT']}}
+elif a==['pane','process-info','--pane','w1:p1']:
+ r={'process_info':{'foreground_processes':[{'name':'codex','pid':4294967294}]}}
+else:sys.exit(2)
+print(json.dumps({'result':r}))
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&mock, fs::Permissions::from_mode(0o700)).unwrap();
+    let session = Uuid::new_v4();
+    let native = Uuid::new_v4().to_string();
+    let rollout = root.path().join("rollout.jsonl");
+    fs::write(&rollout, format!("{}\n{}\n",json!({"type":"session_meta","payload":{"id":session,"cwd":root.path()}}),json!({"type":"event_msg","payload":{"type":"plan_update","plan":[{"step":"원본 계획","status":"in_progress"}]}}))).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args([
+            "bridge",
+            "--agent",
+            "codex",
+            "--root",
+            root.path().to_str().unwrap(),
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("HERDR_ENV", "1")
+        .env("HERDR_PANE_ID", "w1:p1")
+        .env("AP_TEST_ROOT", root.path())
+        .env("CODEX_HOME", root.path())
+        .env_remove("AP_TERMINAL_SLOT")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(json!({"cwd":root.path(),"session_id":native,"transcript_path":rollout,"hook_event_name":"UserPromptSubmit"}).to_string().as_bytes()).unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()["continue"],
+        true
+    );
+    let bridge_dir = root.path().join(".agent-progress/bridges");
+    assert!(!bridge_dir.join("pane-w1_p1.json").exists());
+    assert!(!fs::read_dir(&bridge_dir).unwrap().any(|e| {
+        e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("pane-")
+    }));
+    let key = Uuid::new_v5(
+        &Uuid::NAMESPACE_URL,
+        format!("agent-progress:codex:{native}").as_bytes(),
+    );
+    let status: serde_json::Value = serde_json::from_slice(
+        &fs::read(bridge_dir.join(format!("codex-{key}.status.json"))).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(status["result"]["registered_pane"], false);
+    assert_eq!(status["result"]["source_identity_unverified"], true);
+    assert!(
+        status["result"]["pending"]
+            .as_str()
+            .unwrap()
+            .contains("ap launch")
+    );
+}
+
+#[test]
 fn invalid_presentation_does_not_fail_a_native_plan_hook() {
     use std::{
         io::Write,

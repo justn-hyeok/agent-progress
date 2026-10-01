@@ -419,6 +419,9 @@ fn render_progress_bar(frame: &mut Frame, s: &Snapshot, view: &mut View) {
         "{plan_kind}  ·  {}",
         s.plan_goal
             .as_deref()
+            .or_else(|| product
+                .and_then(|p| p.session_goal.as_ref())
+                .map(|g| g.objective.as_str()))
             .unwrap_or_else(|| s.source.trim_end_matches(" → 제품 계획"))
     );
     let mut paths = Vec::new();
@@ -560,16 +563,26 @@ fn render_progress_bar(frame: &mut Frame, s: &Snapshot, view: &mut View) {
             }
         }
         if area.height >= 8 {
+            let session_done = session_plan
+                .iter()
+                .filter(|e| e.state == StepState::Done)
+                .count();
+            let session_total = session_plan.len();
             lines.push((
-                if total == 0 {
+                if session_total == 0 {
                     "체크리스트 · 아직 계획이 없습니다".into()
                 } else {
-                    format!("체크리스트 · {done}/{total} 완료 · 에이전트 보고 기준")
+                    let caption = if product.is_some() {
+                        "세션 체크리스트"
+                    } else {
+                        "체크리스트"
+                    };
+                    format!("{caption} · {session_done}/{session_total} 완료 · 에이전트 보고 기준")
                 },
                 2,
             ));
             let limit = area.height.saturating_sub(lines.len() as u16) as usize;
-            for entry in s.entries.iter().take(limit) {
+            for entry in session_plan.iter().take(limit) {
                 let indicator = if !entry.present && entry.state != StepState::Done {
                     "!"
                 } else {

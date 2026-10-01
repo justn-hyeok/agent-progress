@@ -1,8 +1,8 @@
 class AgentProgress < Formula
   desc "Passive terminal progress dashboard for coding agents"
   homepage "https://github.com/justn-hyeok/agent-progress"
-  url "https://github.com/justn-hyeok/agent-progress/releases/download/v1.2.6/agent-progress-1.2.6-macos-arm64.tar.gz"
-  sha256 "f52e82a53f8a77766de23039637434596eb818f9221926322a398f31dd905aea"
+  url "https://github.com/justn-hyeok/agent-progress/releases/download/v1.2.7/agent-progress-1.2.7-macos-arm64.tar.gz"
+  sha256 "a1062287d6764fd162e0af947e1f85b9a031f425aeb2acbd3e29a7daae890cd4"
 
   depends_on arch: :arm64
   depends_on :macos
@@ -18,7 +18,7 @@ class AgentProgress < Formula
     <<~EOS
       진행 창 크기는 사용할 프로젝트 루트에서 설정할 수 있습니다:
         ap setup
-      건너뛰면 기본 높이 30%를 사용합니다.
+      건너뛰면 기본 높이 10%를 사용합니다. goal·plan이 생길 때 자동으로 열립니다.
     EOS
   end
 

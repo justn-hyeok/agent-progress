@@ -74,6 +74,10 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Only an explicit goal or an accepted native/reported plan opens an automatic observer.
+    pub fn has_progress(&self) -> bool {
+        self.goal.is_some() || self.plan_seen
+    }
     pub fn empty(session: Uuid, project: String) -> Self {
         Self {
             schema: 1,

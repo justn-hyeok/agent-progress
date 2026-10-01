@@ -1,5 +1,17 @@
 # Release handoff
 
+2026-10-01 1.2.7 release candidate in `feat/open-on-plan`: automatic observers wait for
+the exact native session's first goal or plan, and new default pane height is
+10%. Explicit saved sizes are retained. Herdr hook and Codex frontend, plus
+tmux launch, have been changed. Full local Rust/PTY, fmt, Clippy, source skill
+validation and diff checks passed; the Herdr path has a mocked CLI contract,
+and Codex goal-only opening has a real tmux/WebSocket fixture. The exact archive
+passed authenticated Codex/Claude/OpenCode package smoke and a byte-identical
+repack (SHA-256 a1062287d6764fd162e0af947e1f85b9a031f425aeb2acbd3e29a7daae890cd4).
+Exact evidence
+is in the first section of `docs/current-plan.md`. This is not part of published 1.2.6 or the separate
+unpublished Linux 1.3 candidate.
+
 1.2.6 is published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.6.
 `ap setup` chooses project-local 10–50%
 progress height, and `ap config set --pane-size N` changes it later. Exact

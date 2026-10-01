@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='ap-setup-test-') as directory:
     assert command('config', 'set', '--pane-size', '20').returncode == 0
     assert json.loads(command('config', 'show').stdout)['pane_size_percent'] == 20
     assert command('config', 'reset').returncode == 0
-    assert json.loads(command('config', 'show').stdout)['pane_size_percent'] == 30
+    assert json.loads(command('config', 'show').stdout)['pane_size_percent'] == 10
 
 print(json.dumps({'result': 'passed', 'interactive_setup': True,
                   'project_local': True, 'yaml': True, 'invalid_preserved': True}))

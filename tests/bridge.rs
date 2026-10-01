@@ -50,6 +50,27 @@ print(json.dumps({'result':r}))
         if opt_out {
             command.env("AP_AUTO_OPEN", "0");
         }
+        let mut empty = command.spawn().unwrap();
+        empty.stdin.take().unwrap().write_all(json!({"cwd":temp.path(),"session_id":"stdout-contract","hook_event_name":"SessionStart"}).to_string().as_bytes()).unwrap();
+        let empty_output = empty.wait_with_output().unwrap();
+        assert!(
+            empty_output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&empty_output.stderr)
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&empty_output.stdout).unwrap()["continue"],
+            true
+        );
+        assert!(
+            !fs::read_dir(temp.path().join(".agent-progress"))
+                .unwrap()
+                .any(|e| e
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("window-"))
+        );
         let mut child = command.spawn().unwrap();
         let event = json!({"cwd":temp.path(),"session_id":"stdout-contract","last_assistant_message":"### 진행 계획\n- [x] AP-01 Observe\n- [ ] AP-02 Preserve"});
         child

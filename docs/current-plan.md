@@ -1,5 +1,43 @@
 # Current release plan
 
+## Empty-session display and minimum default — 2026-10-01
+
+- [x] [AP-06/open-on-plan] Keep the automatic observer closed for an empty native session; open it for the exact session after a goal or plan appears.
+- [x] [AP-09/open-on-plan] Verify Herdr hook, Codex frontend and real tmux empty-to-plan transitions, default size, focus and opt-out.
+- [x] [AP-19/open-on-plan] Record final local evidence and keep the pending Linux candidate separate.
+- [>] [AP-19/open-on-plan-release] Verify the exact 1.2.7 source/archive, publish the tag and GitHub Release, then upgrade and verify this Mac through Homebrew.
+
+New project-local presentation settings default to the measured Herdr minimum of 10%.
+Explicit saved sizes continue to win. Native goal/plan state, not a project roadmap or
+session registration alone, triggers automatic opening. Manual `ap open` still works.
+The Linux 1.3 candidate remains in its separate worktree; this patch is based on
+published 1.2.6 and does not include Linux support.
+
+Local verification: `HERDR_ENV=0 cargo test --all-targets`, fmt, Clippy with
+warnings denied, `git diff --check`, interactive setup PTY and real tmux/PTY
+all passed. The Herdr hook contract is isolated with a CLI mock: SessionStart
+does not split, a later plan does, and `AP_AUTO_OPEN=0` still prevents opening.
+The real tmux fixture keeps one pane until a Claude plan arrives, then verifies
+the default 10% size, focus, live resize and cleanup. Its Codex WebSocket
+fixture starts empty, writes a native goal to the exact session's SQLite DB
+without another RPC event, and verifies automatic opening and goal visibility
+in the selected snapshot. Other-session goals do not trigger it. The skill
+source validator passed. These are local/fixture results, not a published build,
+authenticated native-agent run or human acceptance. Reconcile the separate
+Linux candidate with 1.2.7 when its release work resumes; neither worktree
+has been modified by the other task.
+
+1.2.7 macOS arm64 candidate archive:
+`dist/release/agent-progress-1.2.7-macos-arm64.tar.gz`, SHA-256
+`a1062287d6764fd162e0af947e1f85b9a031f425aeb2acbd3e29a7daae890cd4`.
+The independent repack was byte-identical. Full locked Rust tests, fmt,
+Clippy, release build, setup/presentation/real-tmux PTY and all four source
+skill validators passed. The extracted archive passed isolated installation,
+native Codex/Claude/OpenCode producer checks, update, rollback and uninstall
+with product and unrelated files preserved. The package smoke used this Mac's
+authenticated agents in a temporary prefix; GitHub CI, public asset and
+Homebrew upgrade evidence are still pending.
+
 ## First-run pane sizing — 2026-09-30
 
 - [x] [AP-06/pane-size] Add project-local first-use size selection and `ap config set --pane-size` with backward-compatible defaults.

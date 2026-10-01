@@ -276,6 +276,44 @@ fn goal_database_is_optional_read_only_and_other_thread_is_not_read() {
 }
 
 #[test]
+fn automatic_display_waits_for_the_exact_sessions_goal_or_plan() {
+    let dir = tempdir().unwrap();
+    let id = Uuid::new_v4();
+    let path = dir.path().join("rollout.jsonl");
+    fixture(&path, id);
+    let mut feed = Feed::open(path.clone(), Some(id), Some(dir.path().into())).unwrap();
+    feed.refresh_all().unwrap();
+    assert!(!feed.snapshot.has_progress());
+
+    let conn = rusqlite::Connection::open(dir.path().join("goals_1.sqlite")).unwrap();
+    conn.execute_batch("CREATE TABLE thread_goals(thread_id TEXT,goal_id TEXT,objective TEXT,status TEXT,created_at_ms INTEGER);").unwrap();
+    conn.execute(
+        "INSERT INTO thread_goals VALUES (?1,'other','Other goal','active',0)",
+        [Uuid::new_v4().to_string()],
+    )
+    .unwrap();
+    feed.refresh_all().unwrap();
+    assert!(!feed.snapshot.has_progress());
+    conn.execute(
+        "INSERT INTO thread_goals VALUES (?1,'goal','Current goal','active',0)",
+        [id.to_string()],
+    )
+    .unwrap();
+    feed.refresh_all().unwrap();
+    assert!(feed.snapshot.has_progress());
+    assert_eq!(feed.snapshot.counts(), (0, 0));
+
+    let other = dir.path().join("plan.jsonl");
+    fixture(&other, Uuid::new_v4());
+    let mut plan_feed = Feed::open(other.clone(), None, None).unwrap();
+    plan_feed.refresh_all().unwrap();
+    assert!(!plan_feed.snapshot.has_progress());
+    plan(&other, json!([step("Start", "in_progress")]));
+    plan_feed.refresh_all().unwrap();
+    assert!(plan_feed.snapshot.has_progress());
+}
+
+#[test]
 fn explicit_plan_goal_is_visible_without_replacing_native_goal() {
     let dir = tempdir().unwrap();
     let id = Uuid::new_v4();

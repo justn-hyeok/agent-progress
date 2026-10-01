@@ -42,7 +42,7 @@ elif a==['pane','process-info','--pane','w1:p3']:
 elif a==['tab','list','--workspace','w1']:
  result={} if os.environ.get('AP_TEST_UNKNOWN_TABS') else {'tabs':[{'tab_id':'w1:t1','label':os.environ.get('AP_TEST_TAB_LABEL','work')}]}
 elif a[:2]==['pane','split']:
- expected='0.60' if os.environ.get('AP_TEST_SIZE')=='40' else '0.70'
+ expected='0.60' if os.environ.get('AP_TEST_SIZE')=='40' else '0.90'
  assert a[2:8]==['--pane','w1:p1','--direction','down','--ratio',expected] and a[-1]=='--no-focus'
  result={'pane':{'pane_id':'w1:p3'}}
 elif a==['pane','layout','--pane','w1:p1']:
@@ -50,7 +50,7 @@ elif a==['pane','layout','--pane','w1:p1']:
  split_at=max((i for i,x in enumerate(calls) if x[:2]==['pane','split']),default=-1)
  calls=calls[split_at+1:]
  swapped=any(x[:2]==['pane','swap'] for x in calls)
- ratio=.9 if os.environ.get('AP_TEST_NARROW') else (.6 if os.environ.get('AP_TEST_SIZE')=='40' else .7)
+ ratio=.9 if os.environ.get('AP_TEST_NARROW') else (.6 if os.environ.get('AP_TEST_SIZE')=='40' else .9)
  for x in calls:
   if x[:2]==['pane','resize']:
    step=min(.5,float(x[x.index('--amount')+1]))

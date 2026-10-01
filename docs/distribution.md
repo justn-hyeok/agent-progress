@@ -10,7 +10,7 @@ brew install justn-hyeok/agent-progress/agent-progress
 ```
 
 첫 사용 시 프로젝트 루트에서 `ap setup`으로 진행 창 높이를 고른다.
-Homebrew 설치 단계에서는 입력을 받지 않으며, 설정하지 않으면 30% 기본값을 쓴다.
+Homebrew 설치 단계에서는 입력을 받지 않으며, 설정하지 않으면 10% 기본값을 쓴다. 빈 세션은 창을 열지 않고 해당 세션의 goal·plan이 생기면 자동으로 연다.
 
 Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치한다.
 압축 파일의 `skills/`에는 `$ap`, `$ap-connect`, `$ap-theme`, `$ap-recover`

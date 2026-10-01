@@ -569,6 +569,7 @@ fn run(cli: Cli) -> Result<()> {
             if settings.auto_open
                 && std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0")
                 && registered["registered_pane"] == true
+                && registered["has_progress"] == true
             {
                 // Launcher opt-in: open only a read-only observer after exact source ownership was proved.
                 // Diagnostics stay local; observing must never block or steer an agent turn.

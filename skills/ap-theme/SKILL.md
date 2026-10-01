@@ -6,7 +6,7 @@ description: Adjust agent-progress pane colors, presets, background brightness, 
 # ap-theme — project-local appearance
 
 Check `ap --version`, `ap config show`, `ap config presets`, and the relevant
-command's `--help`. These instructions describe ap 1.2.6. Change the requested
+command's `--help`. These instructions describe ap 1.2.7. Change the requested
 project's appearance without modifying its plan, evidence or completion count.
 
 Built-in presets are `signal`, `forest`, `ocean`, and `amber`:

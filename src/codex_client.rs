@@ -445,8 +445,8 @@ fn bind(
     root: &Path,
     backend_home: Option<&Path>,
     marker: &Path,
-) {
-    let result = (|| -> Result<()> {
+) -> Result<Option<crate::terminal::Selection>> {
+    let result = (|| -> Result<Option<crate::terminal::Selection>> {
         let cwd = thread.cwd.context("native thread cwd unavailable")?;
         let cwd = cwd.canonicalize()?;
         let mut path = thread.path;
@@ -466,33 +466,27 @@ fn bind(
         let path = path.context("native transcript creation pending")?;
         let selected: serde_json::Value = serde_json::from_slice(&crate::recovery::read(marker)?)?;
         if selected["session"] != thread.id.to_string() {
-            return Ok(());
+            return Ok(None);
         }
+        let selection = crate::terminal::Selection {
+            session: thread.id,
+            rollout: path.clone(),
+            cwd: cwd.clone(),
+            owner,
+        };
         if let Some(slot) = crate::terminal::slot() {
-            crate::terminal::publish(
-                &slot,
-                crate::terminal::Selection {
-                    session: thread.id,
-                    rollout: path,
-                    cwd,
-                    owner,
-                },
-            )?;
-            return Ok(());
+            crate::terminal::publish(&slot, selection.clone())?;
+            return Ok(Some(selection));
         }
         crate::bridge::register_client(pane, owner, thread.id, &path, &cwd, root, marker)
             .context("native client registration failed")?;
-        if crate::settings::load_for_cwd(&cwd)?.auto_open
-            && std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0")
-        {
-            crate::herdr::open_quiet(Some(pane.into()), true).context("observer opening failed")?;
-        }
-        Ok(())
+        Ok(Some(selection))
     })();
     // Observation never blocks or changes a native turn.
-    if let Err(error) = result {
+    if let Err(error) = &result {
         eprintln!("progress connection unavailable: {error:#}");
     }
+    result
 }
 
 pub fn serve(
@@ -554,15 +548,76 @@ pub fn serve(
         .and_then(Path::parent)
         .map(Path::to_owned);
     let observer = std::thread::spawn(move || {
-        for thread in received {
-            bind(
-                thread,
-                &observed_pane,
-                owner,
-                &observed_root,
-                backend_home.as_deref(),
-                &observed_marker,
-            );
+        let mut selected: Option<crate::terminal::Selection> = None;
+        let mut feed: Option<crate::live::Feed> = None;
+        let mut opened = false;
+        let mut retry_at = Instant::now();
+        loop {
+            match received.recv_timeout(Duration::from_millis(250)) {
+                Ok(thread) => {
+                    if let Ok(next) = bind(
+                        thread,
+                        &observed_pane,
+                        owner,
+                        &observed_root,
+                        backend_home.as_deref(),
+                        &observed_marker,
+                    ) && let Some(next) = next
+                    {
+                        let home = backend_home.clone().or_else(|| {
+                            std::env::var_os("CODEX_HOME")
+                                .map(PathBuf::from)
+                                .or_else(|| {
+                                    std::env::var_os("HOME")
+                                        .map(|p| PathBuf::from(p).join(".codex"))
+                                })
+                        });
+                        feed =
+                            crate::live::Feed::open(next.rollout.clone(), Some(next.session), home)
+                                .ok();
+                        selected = Some(next);
+                        opened = false;
+                        retry_at = Instant::now();
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            }
+            if opened
+                || Instant::now() < retry_at
+                || std::env::var("AP_AUTO_OPEN").as_deref() == Ok("0")
+            {
+                continue;
+            }
+            let (Some(selection), Some(feed)) = (&selected, &mut feed) else {
+                continue;
+            };
+            let current: Result<serde_json::Value> = crate::recovery::read(&observed_marker)
+                .and_then(|bytes| Ok(serde_json::from_slice(&bytes)?));
+            if current
+                .as_ref()
+                .ok()
+                .is_none_or(|v| v["session"] != selection.session.to_string())
+            {
+                continue;
+            }
+            if feed.refresh_all().is_err() || !feed.snapshot.has_progress() {
+                continue;
+            }
+            let settings = crate::settings::load_for_cwd(&selection.cwd);
+            if !settings.is_ok_and(|settings| settings.auto_open) {
+                continue;
+            }
+            let result = if let Some(slot) = crate::terminal::slot() {
+                crate::terminal::open_selected_if_progress(&slot)
+            } else {
+                crate::herdr::open_quiet(Some(observed_pane.clone()), true)
+            };
+            if result.is_ok() {
+                opened = true;
+            } else {
+                retry_at = Instant::now() + Duration::from_secs(5);
+            }
         }
     });
     let requests = state.clone();

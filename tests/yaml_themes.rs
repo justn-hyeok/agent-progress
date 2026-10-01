@@ -38,8 +38,8 @@ states:
     .unwrap();
     let settings = settings::load(root.path()).unwrap();
     assert_eq!(
-        settings.pane_size_percent, 30,
-        "older YAML keeps the default size"
+        settings.pane_size_percent, 10,
+        "YAML without an explicit size uses the new minimum default"
     );
     assert_eq!(settings.palette(None).unwrap().fill, Color::Rgb(48, 72, 96));
     assert_eq!(

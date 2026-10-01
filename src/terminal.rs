@@ -16,7 +16,7 @@ pub struct Request {
     pub cwd: PathBuf,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Selection {
     pub session: uuid::Uuid,
     pub rollout: PathBuf,
@@ -173,7 +173,6 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
     );
     let quoted = crate::herdr::shell_quote(path.to_str().context("slot encoding")?);
     let source_command = format!("exec {executable} terminal-source --slot {quoted}");
-    let observer_command = format!("exec {executable} terminal-follow --slot {quoted}");
     let existing = std::env::var_os("TMUX").is_some();
     let (columns, rows) = crossterm::terminal::size().unwrap_or((120, 40));
     let columns = columns.to_string();
@@ -218,39 +217,7 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
         )?
     };
     crate::recovery::write(&path.join("source-pane"), source.as_bytes(), false)?;
-    let height: usize = tmux(
-        socket.as_deref(),
-        &["display-message", "-p", "-t", &source, "#{window_height}"],
-    )?
-    .parse()?;
-    let progress_rows = settings.progress_rows(height).to_string();
-    let mut split = vec![
-        "split-window",
-        "-d",
-        "-v",
-        "-l",
-        &progress_rows,
-        "-P",
-        "-F",
-        "#{pane_id}",
-        "-t",
-        source.as_str(),
-    ];
-    let position = settings.position;
-    if position == crate::settings::Position::Above {
-        split.push("-b");
-    }
-    split.push(&observer_command);
-    let observer = match tmux(socket.as_deref(), &split) {
-        Ok(observer) => observer,
-        Err(error) => {
-            // Close only this newly-created window, never an unrelated session/server.
-            let _ = tmux(socket.as_deref(), &["kill-window", "-t", &source]);
-            return Err(error.context("progress split failed"));
-        }
-    };
-    crate::recovery::write(&path.join("observer-pane"), observer.as_bytes(), false)?;
-    let _ = tmux(socket.as_deref(), &["select-pane", "-t", &source]);
+    // The native agent gets the full window until its own goal or plan appears.
     crate::recovery::write(&path.join("layout-ready"), b"ready", false)?;
     let kept = directory.keep();
     if existing {
@@ -271,7 +238,10 @@ pub fn maybe_launch(agent: &str, args: &[String]) -> Result<bool> {
         let code: i32 = fs::read_to_string(kept.join("exit-status"))?.parse()?;
         // Let the observer restore its terminal before removing its request metadata.
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        while kept.join("request.json").exists() && std::time::Instant::now() < deadline {
+        while kept.join("observer-pane").exists()
+            && kept.join("request.json").exists()
+            && std::time::Instant::now() < deadline
+        {
             std::thread::sleep(Duration::from_millis(20));
         }
         cleanup(&kept, true);
@@ -414,6 +384,7 @@ fn cleanup(path: &Path, socket: bool) {
         "layout-ready",
         "source-pane",
         "observer-pane",
+        "observer.ap-lock",
     ] {
         let _ = fs::remove_file(path.join(name));
     }
@@ -495,11 +466,88 @@ pub fn publish(path: &Path, selection: Selection) -> Result<()> {
         &path.join("selection.json"),
         &serde_json::to_vec(&selection)?,
         true,
-    )
+    )?;
+    if let Err(error) = open_selected_if_progress(path) {
+        eprintln!("ap: progress window unavailable: {error:#}");
+    }
+    Ok(())
+}
+
+/// The exact source owns this slot. Hooks and the Codex frontend may retry safely.
+pub fn open_selected_if_progress(path: &Path) -> Result<()> {
+    use fs2::FileExt;
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.join("observer.ap-lock"))?;
+    lock.lock_exclusive()?;
+    if path.join("observer-pane").exists() || !path.join("layout-ready").exists() {
+        return Ok(());
+    }
+    let request = validate_slot(path)?;
+    let selection: Selection =
+        serde_json::from_slice(&crate::recovery::read(&path.join("selection.json"))?)?;
+    let home = (request.agent == "codex").then(codex_home).flatten();
+    let mut feed = crate::live::Feed::open(selection.rollout, Some(selection.session), home)?;
+    feed.refresh_all()?;
+    if !feed.snapshot.has_progress() {
+        return Ok(());
+    }
+    let settings = crate::settings::load_for_cwd(&request.cwd).unwrap_or_else(|_| {
+        eprintln!("ap: invalid presentation settings; using default display settings");
+        Default::default()
+    });
+    if !settings.auto_open || std::env::var("AP_AUTO_OPEN").as_deref() == Ok("0") {
+        return Ok(());
+    }
+    let source = fs::read_to_string(path.join("source-pane"))?;
+    let socket_path = path.join("tmux.sock");
+    let socket = socket_path.exists().then_some(socket_path.as_path());
+    let height: usize = tmux(
+        socket,
+        &["display-message", "-p", "-t", &source, "#{window_height}"],
+    )?
+    .parse()?;
+    let rows = settings.progress_rows(height).to_string();
+    let executable = crate::herdr::shell_quote(
+        std::env::current_exe()?
+            .to_str()
+            .context("binary path encoding")?,
+    );
+    let quoted = crate::herdr::shell_quote(path.to_str().context("slot encoding")?);
+    let observer_command = format!("exec {executable} terminal-follow --slot {quoted}");
+    let mut split = vec![
+        "split-window",
+        "-d",
+        "-v",
+        "-l",
+        &rows,
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "-t",
+        &source,
+    ];
+    if settings.position == crate::settings::Position::Above {
+        split.push("-b");
+    }
+    split.push(&observer_command);
+    let observer = tmux(socket, &split).context("progress split failed")?;
+    crate::recovery::write(&path.join("observer-pane"), observer.as_bytes(), false)?;
+    let _ = tmux(socket, &["select-pane", "-t", &source]);
+    Ok(())
+}
+
+fn codex_home() -> Option<PathBuf> {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
 }
 
 pub fn follow(path: &Path, once: bool) -> Result<()> {
-    validate_slot(path)?;
+    let request = validate_slot(path)?;
+    let home = (request.agent == "codex").then(codex_home).flatten();
     if once {
         let selection: Selection =
             serde_json::from_slice(&crate::recovery::read(&path.join("selection.json"))?)?;
@@ -507,7 +555,7 @@ pub fn follow(path: &Path, once: bool) -> Result<()> {
             pane: None,
             session: Some(selection.session),
             rollout: Some(selection.rollout),
-            home: None,
+            home,
             once: true,
             cache: None,
             project: None,
@@ -534,7 +582,7 @@ pub fn follow(path: &Path, once: bool) -> Result<()> {
                     feed = Some(crate::live::Feed::open(
                         selection.rollout,
                         Some(selection.session),
-                        None,
+                        home.clone(),
                     )?);
                     selected = Some(selection.session);
                 }

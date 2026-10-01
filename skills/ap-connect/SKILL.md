@@ -10,7 +10,7 @@ the user to register a task, copy a session ID, or maintain a second checklist.
 The pane reflects reports; it does not supervise work or certify completion.
 
 Check `ap --version` and relevant `--help` first. These instructions describe
-ap 1.2.6; check preview and doctor fields before relying on them. If the binary
+ap 1.2.7; check preview and doctor fields before relying on them. If the binary
 is missing, install it only when installation is within the request. On macOS
 Apple Silicon, the published Homebrew path is:
 
@@ -46,7 +46,9 @@ never silently change its completion claims.
 ## Open and diagnose
 
 From the current agent's Herdr pane, `ap open` opens or reuses its managed
-observer without changing focus. Connected hooks normally open it. Use an
+observer without changing focus. Connected sessions open it automatically when
+their first goal or plan appears; empty sessions keep the source full-sized.
+Use an
 explicit `--pane` only after verifying that source from live metadata; never
 pick the focused pane or newest log as a substitute. Do not create a second
 observer manually. For an established source, `ap doctor --pane SOURCE` checks
@@ -56,6 +58,7 @@ reattach a changed native session. Preserve busy or unowned panes.
 `ap open --position above` moves this opening; `ap config set --position below`
 saves future placement. An owned vertical sibling swaps position and sizes.
 `ap setup` chooses the first project-local pane height in an interactive terminal;
+without a saved preference the height is 10%.
 `ap config set --pane-size 25` changes it later (10–50 percent). In the exact
 source pane, a managed observer is resized immediately without opening a new
 pane. Herdr's measured minimum wins on small terminals. Outside the source,

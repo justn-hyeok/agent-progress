@@ -164,7 +164,16 @@ pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Resul
             Path::new(&source_cwd).canonicalize()?.starts_with(&root),
             "Codex transcript project mismatch"
         );
-        let result = register(agent, native, thread, &rollout, &root, &dir);
+        let result =
+            register(agent, native, thread, &rollout, &root, &dir).and_then(|mut result| {
+                let home = std::env::var_os("CODEX_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")));
+                let mut feed = live::Feed::open(rollout.clone(), Some(thread), home)?;
+                feed.refresh_all()?;
+                result["has_progress"] = json!(feed.snapshot.has_progress());
+                Ok(result)
+            });
         let status = match &result {
             Ok(v) => json!({"event":event["hook_event_name"],"result":v}),
             Err(error) => json!({"event":event["hook_event_name"],"error":error.to_string()}),
@@ -305,7 +314,9 @@ pub fn ingest(agent: &str, event: &Value, selected_root: Option<&Path>) -> Resul
     if let Some(project) = project {
         project.project(&feed.snapshot)?;
     }
-    register(agent, native, session, &rollout, &root, &dir)
+    let mut result = register(agent, native, session, &rollout, &root, &dir)?;
+    result["has_progress"] = json!(feed.snapshot.has_progress());
+    Ok(result)
 }
 
 fn register(

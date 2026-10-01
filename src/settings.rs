@@ -223,7 +223,7 @@ impl Default for Settings {
         Self {
             schema: 1,
             position: Position::Below,
-            pane_size_percent: 30,
+            pane_size_percent: 10,
             auto_open: true,
             preset: "signal".into(),
             background_brightness: 1.0,

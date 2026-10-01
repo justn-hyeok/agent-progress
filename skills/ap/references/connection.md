@@ -97,7 +97,10 @@ when the command runs from its source pane; otherwise the next opening uses
 the preference. The terminal layout engine's minimum height wins when needed.
 
 Inside the current agent's Herdr pane, `ap open` uses the exact source and saved placement.
-Working hooks open the observer automatically unless `auto_open=false` or `AP_AUTO_OPEN=0`.
+Connected hooks open the observer after the exact session gains a goal or plan.
+An empty session keeps the source pane full-sized. The new default observer height
+is 10%; explicitly saved sizes still apply. `auto_open=false` or `AP_AUTO_OPEN=0`
+disables automatic opening.
 
 ```sh
 ap open --position above

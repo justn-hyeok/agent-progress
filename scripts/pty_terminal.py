@@ -31,6 +31,7 @@ if sys.argv[1:]==['--help']:print('--settings --output-format --resume');sys.exi
 slot=Path(os.environ['AP_TERMINAL_SLOT']); label=sys.argv[1]
 root=Path.cwd(); (root/(label+'.slot')).write_text(str(slot))
 (root/(label+'.args')).write_text(json.dumps(sys.argv[1:]))
+while not (root/(label+'.plan')).exists():time.sleep(.05)
 event={'cwd':str(root),'session_id':label,'todos':[{'content':'AP-01 '+label,'status':'in_progress'}]}
 subprocess.run([os.environ['AP_TEST_BIN'],'bridge','--agent','claude'],input=json.dumps(event),text=True,check=True,stdout=subprocess.DEVNULL)
 resized=False
@@ -90,13 +91,20 @@ sys.exit(7)
             request=json.loads(bytes(v^mask[i%4] for i,v in enumerate(payload)))
             assert request['method']=='thread/start'
             session=str(uuid.uuid4());rollout=root/'native.jsonl'
-            rollout.write_text(json.dumps({'type':'session_meta','payload':{'id':session,'cwd':str(root)}})+'\n'+json.dumps({'type':'event_msg','payload':{'type':'plan_update','plan':[{'step':'AP-01 third','status':'in_progress'}]}})+'\n')
+            rollout.write_text(json.dumps({'type':'session_meta','payload':{'id':session,'cwd':str(root)}})+'\n')
             data=json.dumps({'id':1,'result':{'thread':{'id':session,'path':str(rollout),'cwd':str(root),'ephemeral':False}}}).encode()
             connection.sendall(bytes([0x81,126])+struct.pack('!H',len(data))+data)
+            while not (root/'third.goal').exists():time.sleep(.05)
+            import sqlite3
+            database=sqlite3.connect(root/'codex-home'/'goals_1.sqlite')
+            database.execute('CREATE TABLE thread_goals(thread_id TEXT,goal_id TEXT,objective TEXT,status TEXT,created_at_ms INTEGER)')
+            database.execute('INSERT INTO thread_goals VALUES (?,?,?,?,?)',(session,'goal','AP-01 third goal','active',0))
+            database.commit();database.close()
             while connection.recv(1024):pass
     thread=threading.Thread(target=backend_server,daemon=True);thread.start()
     children=[]; handles=[]; slots=[]
-    env={**os.environ,'HERDR_ENV':'0','TERM':'xterm-256color','AP_TEST_BIN':str(ap),'PATH':str(bin)+':'+os.environ['PATH']}
+    (root/'codex-home').mkdir()
+    env={**os.environ,'HERDR_ENV':'0','TERM':'xterm-256color','AP_TEST_BIN':str(ap),'CODEX_HOME':str(root/'codex-home'),'PATH':str(bin)+':'+os.environ['PATH']}
     for key in ['TMUX','TMUX_PANE','AP_TERMINAL_SLOT']:env.pop(key,None)
     try:
         for label in ['first','second','third']:
@@ -109,7 +117,17 @@ sys.exit(7)
             children.append(child)
             until(lambda:(root/(label+'.slot')).exists())
             slot=Path((root/(label+'.slot')).read_text());slots.append(slot)
+            if label!='third':
+                def before_plan():
+                    return subprocess.check_output(['tmux','-S',str(slot/'tmux.sock'),'list-panes','-t','ap','-F','#{pane_id}'],text=True).splitlines()
+                until(lambda:len(before_plan())==1)
+                assert not (slot/'observer-pane').exists()
+                (root/(label+'.plan')).touch()
             until(lambda:(slot/'selection.json').exists())
+            if label=='third':
+                assert not (slot/'observer-pane').exists()
+                (root/'third.goal').touch()
+            until(lambda:(slot/'observer-pane').exists())
             selection=json.loads((slot/'selection.json').read_text())
             assert selection['owner']==int((slot/'owner').read_text())
             if label!='third':assert json.loads((root/(label+'.args')).read_text())==[label,"quoted a'b",'literal$HOME','']
@@ -120,7 +138,7 @@ sys.exit(7)
             source=next(p.split()[0] for p in panes if p.split()[1]=='1')
             observer=next(p.split()[0] for p in panes if p.split()[1]=='0')
             window_height=int(call('display-message','-p','-t',source,'#{window_height}'))
-            expected_rows=(window_height*(40 if label=='third' else 30)+50)//100
+            expected_rows=(window_height*(40 if label=='third' else 30 if label=='second' else 10)+50)//100
             assert int(next(p.split()[2] for p in panes if p.split()[1]=='0'))==expected_rows,panes
             if label=='first':
                 (root/'first.resize').touch()
@@ -137,12 +155,15 @@ sys.exit(7)
                 assert resized_panes[0].split()[0]==observer
                 assert next(p.split()[0] for p in resized_panes if p.split()[1]=='1')==source
             assert panes[0].split()[1]==('0' if label=='third' else '1'),panes
-            until(lambda:label in call('capture-pane','-p','-t',observer))
+            visible='Portable fixture' if label=='third' else label
+            try:until(lambda:visible in call('capture-pane','-p','-t',observer))
+            except AssertionError:raise AssertionError({'label':label,'observer':call('capture-pane','-p','-t',observer),'snapshot':subprocess.check_output([str(ap),'terminal-follow','--slot',str(slot),'--once'],env=env,text=True)})
             # Actual pane resize keeps the observer alive and its source unchanged.
             call('resize-window','-t','ap','-x','90','-y','24')
-            until(lambda:label in call('capture-pane','-p','-t',observer))
+            until(lambda:visible in call('capture-pane','-p','-t',observer))
             snapshot=json.loads(subprocess.check_output([str(ap),'terminal-follow','--slot',str(slot),'--once'],env=env,text=True))
             assert snapshot['session']==selection['session']
+            if label=='third':assert snapshot['overall']['session_goal']['objective']=='AP-01 third goal',snapshot
         assert json.loads((slots[0]/'selection.json').read_text())['session']!=json.loads((slots[1]/'selection.json').read_text())['session']
         for label in ['first','second','third']:(root/(label+'.end')).touch()
         for child,expected in zip(children,[0,0,7]):until(lambda:child.poll() is not None);assert child.returncode==expected,(child.returncode,expected)
@@ -161,6 +182,7 @@ sys.exit(7)
         child=subprocess.Popen([str(ap),'launch','--agent','claude','--','fourth'],stdin=slave,stdout=slave,stderr=slave,cwd=root,env=env_existing);children.append(child)
         until(lambda:(root/'fourth.slot').exists())
         slot=Path((root/'fourth.slot').read_text());slots.append(slot)
+        (root/'fourth.plan').touch()
         try:until(lambda:(slot/'selection.json').exists())
         except AssertionError:
             raise AssertionError({'fixture_outer_status':child.poll(),'slot_exists':slot.exists(),'output':frames.get(master,b'').decode(errors='replace')[-2000:]})

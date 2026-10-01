@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.7 — 2026-10-01
+
+- Default new progress windows to the measured Herdr minimum height of 10%.
+  Existing explicitly saved pane sizes are preserved.
+- Wait to open an automatic observer until the exact agent session has a goal
+  or plan. Empty sessions keep the full source pane; manual `ap open` remains available.
+- Detect a goal or plan added after Codex frontend startup, and open the optional
+  tmux observer only when that session gains progress. Retain `AP_AUTO_OPEN=0`
+  and `auto_open=false` opt-outs.
+
+
 ## 1.2.6 — 2026-09-30
 
 - Add `ap setup` / `ap config setup` to choose a project-local progress-pane

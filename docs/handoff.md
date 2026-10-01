@@ -1,5 +1,15 @@
 # Release handoff
 
+1.2.8 hotfix candidate: repeated native-hook openings no longer reset a
+manually adjusted Herdr progress pane to the saved size. The 1.2.7 behavior
+was reproduced with an exact-pane CLI fixture; explicit config size changes
+remain live. The local package passed authenticated three-agent smoke and a
+byte-identical repack (SHA-256
+ed52a7b7ee66e87d0cfafd3ea3bb3047291d9ad49664d8968d1953d0419ef2e0).
+See the first section of `docs/current-plan.md` for verification
+and publication state. Existing user panes have not been modified.
+
+
 1.2.7 was published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.7
 and installed on this Mac via Homebrew. Automatic observers wait for
 the exact native session's first goal or plan, and new default pane height is

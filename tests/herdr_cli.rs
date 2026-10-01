@@ -38,7 +38,7 @@ elif a==['pane','get','w1:p1']:
 elif a==['pane','get','w1:p3']:
  result={'pane':{'terminal_id':'progress-terminal'}}
 elif a==['pane','process-info','--pane','w1:p3']:
- result={'process_info':{'foreground_processes':[{'name':'zsh','pid':999}]}}
+ result={'process_info':{'foreground_processes':[{'name':'ap' if os.environ.get('AP_TEST_OBSERVER_ACTIVE') else 'zsh','pid':999}]}}
 elif a==['tab','list','--workspace','w1']:
  result={} if os.environ.get('AP_TEST_UNKNOWN_TABS') else {'tabs':[{'tab_id':'w1:t1','label':os.environ.get('AP_TEST_TAB_LABEL','work')}]}
 elif a[:2]==['pane','split']:
@@ -72,6 +72,14 @@ print(json.dumps({'result':result}))
         r#"#!/usr/bin/env python3
 import os
 print('n'+os.environ['AP_TEST_ROLLOUT'])
+"#,
+    );
+    executable(
+        &bin.join("ps"),
+        r#"#!/usr/bin/env python3
+import os,sys
+if 'AP_TEST_SESSION' in os.environ:print('ap follow --pane w1:p1 --session '+os.environ['AP_TEST_SESSION'])
+else:os.execv('/bin/ps',['ps']+sys.argv[1:])
 "#,
     );
     let out = Command::new(env!("CARGO_BIN_EXE_ap"))
@@ -172,6 +180,58 @@ print('n'+os.environ['AP_TEST_ROLLOUT'])
                 .as_array()
                 .is_some_and(|parts| parts.iter().any(|value| value == "up"))
     }));
+    // A user shrank the already-owned observer to 10% after saving 40%.
+    // Repeated automatic opens must not grow it back on every native hook.
+    fs::write(&calls, "").unwrap();
+    let repeated = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["open", "--pane", "w1:p1"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("HERDR_ENV", "1")
+        .env("AP_TEST_NARROW", "1")
+        .env("AP_TEST_SIZE", "40")
+        .env("AP_TEST_CALLS", &calls)
+        .env("AP_TEST_ROLLOUT", &path)
+        .output()
+        .unwrap();
+    assert!(
+        repeated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&repeated.stderr)
+    );
+    let repeated_calls = fs::read_to_string(&calls).unwrap();
+    assert!(
+        !repeated_calls.contains("\"resize\""),
+        "reopening changed a manually sized observer: {repeated_calls}"
+    );
+    fs::write(&calls, "").unwrap();
+    let active = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .args(["open", "--pane", "w1:p1"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("HERDR_ENV", "1")
+        .env("AP_TEST_NARROW", "1")
+        .env("AP_TEST_SIZE", "40")
+        .env("AP_TEST_OBSERVER_ACTIVE", "1")
+        .env("AP_TEST_SESSION", session.to_string())
+        .env("AP_TEST_CALLS", &calls)
+        .env("AP_TEST_ROLLOUT", &path)
+        .output()
+        .unwrap();
+    assert!(
+        active.status.success(),
+        "{}",
+        String::from_utf8_lossy(&active.stderr)
+    );
+    let active_calls = fs::read_to_string(&calls).unwrap();
+    assert!(
+        !active_calls.contains("\"resize\""),
+        "active observer grew: {active_calls}"
+    );
     let minimum = Command::new(env!("CARGO_BIN_EXE_ap"))
         .args(["config", "set", "--pane-size", "10"])
         .current_dir(dir.path())

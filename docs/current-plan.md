@@ -1,5 +1,28 @@
 # Current release plan
 
+## Repeated pane growth hotfix — 2026-10-01
+
+- [x] [AP-06/pane-growth] Reproduce a manually shrunk Herdr observer growing after an automatic reopen, and preserve its live height on ordinary reuse.
+- [x] [AP-09/pane-growth] Verify idle and active observer reuse, explicit config resize, full Rust regression and terminal lifecycle.
+- [ ] [AP-19/pane-growth] Package, publish and install the verified 1.2.8 hotfix without altering the 1.2.7 release or the separate Linux candidate.
+
+The 1.2.7 source reapplied `pane_size_percent` whenever a native hook reopened
+an already-owned observer. A mocked Herdr contract reproduced a saved 40% size
+growing a manually reduced 10% pane during `ap open`. An isolated real Herdr
+session confirmed resize direction and ratio behavior, so the repeated
+reapplication is the responsible path. Existing active and reusable-shell
+observers now retain their measured height; new observers and explicit
+`ap config set --pane-size` still apply the preference. The test session was
+stopped after measurement. Live user panes remain untouched during the fix.
+
+Local 1.2.8 candidate: `dist/release/agent-progress-1.2.8-macos-arm64.tar.gz`,
+SHA-256 `ed52a7b7ee66e87d0cfafd3ea3bb3047291d9ad49664d8968d1953d0419ef2e0`.
+The repack is byte-identical. Locked Rust tests, fmt, Clippy, release build,
+setup/presentation/real-tmux PTY, and four skill validators passed. Exact
+archive smoke passed authenticated Codex/Claude/OpenCode producers, temporary
+upgrade, rollback and uninstall, retaining product and unrelated data. This is
+local evidence; GitHub CI, public asset and installed Homebrew proof follow.
+
 ## Empty-session display and minimum default — 2026-10-01
 
 - [x] [AP-06/open-on-plan] Keep the automatic observer closed for an empty native session; open it for the exact session after a goal or plan appears.

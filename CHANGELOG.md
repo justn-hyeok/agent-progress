@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.8 — 2026-10-01
+
+- Preserve the height of an already-open Herdr progress pane when native hooks
+  reconnect to it. A user-adjusted pane no longer grows back to the saved size
+  after each agent turn. `ap config set --pane-size` still resizes the exact
+  owned pane immediately, and newly opened panes still use the saved size.
+
+
 ## 1.2.7 — 2026-10-01
 
 - Default new progress windows to the measured Herdr minimum height of 10%.

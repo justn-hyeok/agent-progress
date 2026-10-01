@@ -349,7 +349,7 @@ pub fn open(pane: Option<String>) -> Result<()> {
 }
 
 pub fn open_with(pane: Option<String>, reconnect: bool) -> Result<()> {
-    open_internal(pane, reconnect, false, None)
+    open_internal(pane, reconnect, false, None, false)
 }
 
 pub fn open_position(
@@ -357,11 +357,11 @@ pub fn open_position(
     reconnect: bool,
     position: Option<crate::settings::Position>,
 ) -> Result<()> {
-    open_internal(pane, reconnect, false, position)
+    open_internal(pane, reconnect, false, position, false)
 }
 
 pub fn open_quiet(pane: Option<String>, reconnect: bool) -> Result<()> {
-    open_internal(pane, reconnect, true, None)
+    open_internal(pane, reconnect, true, None, false)
 }
 
 /// Update only the observer owned by this exact agent pane; never create one
@@ -388,7 +388,7 @@ pub fn refresh_existing_for_root(root: &Path) -> Result<()> {
         .cwd
         .join(format!(".agent-progress/window-{}.json", binding.session));
     if receipt.exists() {
-        open_internal(Some(pane), false, true, None)?;
+        open_internal(Some(pane), false, true, None, true)?;
     }
     Ok(())
 }
@@ -398,6 +398,7 @@ fn open_internal(
     reconnect: bool,
     quiet: bool,
     position: Option<crate::settings::Position>,
+    enforce_saved_size: bool,
 ) -> Result<()> {
     let pane = pane
         .or_else(|| std::env::var("HERDR_PANE_ID").ok())
@@ -599,7 +600,11 @@ fn open_internal(
                     record["position"] = serde_json::json!(position);
                     crate::recovery::write(&receipt, &serde_json::to_vec_pretty(&record)?, true)?;
                 }
-                resize_observer(&pane, child, settings.pane_size_percent)?;
+                // Native hooks may reopen on every turn. Preserve a size the user
+                // adjusted directly; only an explicit config change reapplies it.
+                if enforce_saved_size {
+                    resize_observer(&pane, child, settings.pane_size_percent)?;
+                }
                 if !quiet {
                     println!("기존 진행 상황 창: {child} ← {pane} · {}", binding.session);
                 }
@@ -626,7 +631,9 @@ fn open_internal(
             record["position"] = serde_json::json!(position);
             crate::recovery::write(&receipt, &serde_json::to_vec_pretty(&record)?, true)?;
         }
-        resize_observer(&pane, child, settings.pane_size_percent)?;
+        if enforce_saved_size {
+            resize_observer(&pane, child, settings.pane_size_percent)?;
+        }
         let command = format!(
             "{} follow --pane {} --session {}",
             shell_quote(

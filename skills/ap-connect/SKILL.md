@@ -10,7 +10,7 @@ the user to register a task, copy a session ID, or maintain a second checklist.
 The pane reflects reports; it does not supervise work or certify completion.
 
 Check `ap --version` and relevant `--help` first. These instructions describe
-ap 1.2.7; check preview and doctor fields before relying on them. If the binary
+ap 1.2.8; check preview and doctor fields before relying on them. If the binary
 is missing, install it only when installation is within the request. On macOS
 Apple Silicon, the published Homebrew path is:
 
@@ -61,7 +61,8 @@ saves future placement. An owned vertical sibling swaps position and sizes.
 without a saved preference the height is 10%.
 `ap config set --pane-size 25` changes it later (10–50 percent). In the exact
 source pane, a managed observer is resized immediately without opening a new
-pane. Herdr's measured minimum wins on small terminals. Outside the source,
+pane. Ordinary automatic reconnection preserves a size adjusted directly in
+Herdr. Herdr's measured minimum wins on small terminals. Outside the source,
 the saved size applies on the next open. Color and brightness belong to
 `$ap-theme`.
 

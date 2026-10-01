@@ -5,7 +5,7 @@
 - [x] [AP-06/open-on-plan] Keep the automatic observer closed for an empty native session; open it for the exact session after a goal or plan appears.
 - [x] [AP-09/open-on-plan] Verify Herdr hook, Codex frontend and real tmux empty-to-plan transitions, default size, focus and opt-out.
 - [x] [AP-19/open-on-plan] Record final local evidence and keep the pending Linux candidate separate.
-- [>] [AP-19/open-on-plan-release] Verify the exact 1.2.7 source/archive, publish the tag and GitHub Release, then upgrade and verify this Mac through Homebrew.
+- [x] [AP-19/open-on-plan-release] Verify the exact 1.2.7 source/archive, publish the tag and GitHub Release, then upgrade and verify this Mac through Homebrew.
 
 New project-local presentation settings default to the measured Herdr minimum of 10%.
 Explicit saved sizes continue to win. Native goal/plan state, not a project roadmap or
@@ -22,8 +22,9 @@ the default 10% size, focus, live resize and cleanup. Its Codex WebSocket
 fixture starts empty, writes a native goal to the exact session's SQLite DB
 without another RPC event, and verifies automatic opening and goal visibility
 in the selected snapshot. Other-session goals do not trigger it. The skill
-source validator passed. These are local/fixture results, not a published build,
-authenticated native-agent run or human acceptance. Reconcile the separate
+source validator passed. These scenario checks are local/fixture results,
+separate from the authenticated package smoke and public release evidence below;
+human acceptance was not repeated. Reconcile the separate
 Linux candidate with 1.2.7 when its release work resumes; neither worktree
 has been modified by the other task.
 
@@ -35,8 +36,23 @@ Clippy, release build, setup/presentation/real-tmux PTY and all four source
 skill validators passed. The extracted archive passed isolated installation,
 native Codex/Claude/OpenCode producer checks, update, rollback and uninstall
 with product and unrelated files preserved. The package smoke used this Mac's
-authenticated agents in a temporary prefix; GitHub CI, public asset and
-Homebrew upgrade evidence are still pending.
+authenticated agents in a temporary prefix. Public release and installed
+evidence follows below.
+
+Published 1.2.7: https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.7.
+Annotated tag/source `065217222bf04a4a642ae6993177497b7bd8359f` passed
+branch CI `36808740342` and tag CI `36808959686`. The downloaded archive and
+checksum asset were byte-identical to the verified local files. Formula commit
+`9fa455f4737b8753bf67d24d9cc1951a8e8806bb` passed Homebrew install CI
+`36809257673` and Rust CI `36809257694`. Local Homebrew upgraded 1.2.6 to
+1.2.7 while retaining older Cellar copies; installed `ap` matched the public
+binary SHA-256 `21a1a73af8f4d569c19de50a244182b33a4f55614294c87668ecfeca413c3e98`.
+`brew test`, strict audit, and installed setup/tmux PTY passed. The four
+installed Codex skills matched the packaged bytes and passed validation;
+prior copies were backed up at
+`/Users/justn/.codex/ap-skill-v127-backup.ffOvHW`. Existing user panes and
+project data were not modified. Linux 1.3 remains an independent unpublished
+candidate; 1.2.7 contains macOS arm64 only and is unsigned/unnotarized.
 
 ## First-run pane sizing — 2026-09-30
 

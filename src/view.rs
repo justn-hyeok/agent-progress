@@ -1,4 +1,4 @@
-use crate::store::{Plan, State, Store};
+use crate::store::{Item, Plan, State, Store};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -6,7 +6,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Paragraph, Wrap},
 };
 use std::time::{Duration, SystemTime};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -320,6 +320,336 @@ fn mtime(store: &Store) -> Option<SystemTime> {
         .ok()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum Mode {
+    #[default]
+    Bar,
+    List,
+    Detail,
+    History,
+    Help,
+}
+
+/// Interactive state on top of the passive progress bar. Nothing here is required to
+/// read the status; it only opens details on request.
+#[derive(Default)]
+struct Ui {
+    mode: Mode,
+    selected: usize,
+    query: String,
+    typing: bool,
+    unfinished: bool,
+    scroll: usize,
+}
+
+enum Action {
+    None,
+    Quit,
+}
+
+fn visible<'a>(plan: Option<&'a Plan>, ui: &Ui) -> Vec<&'a Item> {
+    let query = ui.query.to_lowercase();
+    plan.map(|p| {
+        p.items
+            .iter()
+            .filter(|i| !ui.unfinished || !matches!(i.state, State::Done | State::Cancelled))
+            .filter(|i| query.is_empty() || i.title.to_lowercase().contains(&query))
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn handle(ui: &mut Ui, code: KeyCode, ctrl: bool, plan: Option<&Plan>) -> Action {
+    if ctrl && code == KeyCode::Char('c') {
+        return Action::Quit;
+    }
+    if ui.typing {
+        match code {
+            KeyCode::Esc => {
+                ui.typing = false;
+                ui.query.clear();
+            }
+            KeyCode::Enter => ui.typing = false,
+            KeyCode::Backspace => {
+                ui.query.pop();
+            }
+            KeyCode::Char(c) => ui.query.push(c),
+            _ => {}
+        }
+        ui.selected = 0;
+        return Action::None;
+    }
+    let count = visible(plan, ui).len();
+    let current = || {
+        plan.and_then(|p| {
+            let items = visible(Some(p), &Ui::default());
+            items.iter().position(|i| i.state == State::Doing)
+        })
+        .unwrap_or(0)
+    };
+    match code {
+        KeyCode::Char('q') => return Action::Quit,
+        KeyCode::Esc => {
+            if ui.mode == Mode::Detail {
+                ui.mode = Mode::List;
+            } else {
+                *ui = Ui::default();
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => match ui.mode {
+            Mode::Bar => {
+                ui.mode = Mode::List;
+                ui.selected = current();
+            }
+            Mode::List => ui.selected = (ui.selected + 1).min(count.saturating_sub(1)),
+            _ => ui.scroll += 1,
+        },
+        KeyCode::Up | KeyCode::Char('k') => match ui.mode {
+            Mode::Bar => {
+                ui.mode = Mode::List;
+                ui.selected = current();
+            }
+            Mode::List => ui.selected = ui.selected.saturating_sub(1),
+            _ => ui.scroll = ui.scroll.saturating_sub(1),
+        },
+        KeyCode::Enter => {
+            if ui.mode == Mode::Bar {
+                ui.selected = current();
+            }
+            if count > 0 {
+                ui.mode = Mode::Detail;
+                ui.scroll = 0;
+            }
+        }
+        KeyCode::Char('/') => {
+            ui.mode = Mode::List;
+            ui.typing = true;
+            ui.query.clear();
+            ui.selected = 0;
+        }
+        KeyCode::Char('f') => {
+            ui.mode = Mode::List;
+            ui.unfinished = !ui.unfinished;
+            ui.selected = 0;
+        }
+        KeyCode::Char('h') => {
+            ui.mode = Mode::History;
+            ui.scroll = 0;
+        }
+        KeyCode::Char('?') => ui.mode = Mode::Help,
+        _ => {}
+    }
+    Action::None
+}
+
+fn label(state: State) -> &'static str {
+    match state {
+        State::Todo => "예정",
+        State::Doing => "진행 중",
+        State::Blocked => "막힘",
+        State::Done => "완료",
+        State::Cancelled => "취소",
+    }
+}
+
+fn ago(at: u64) -> String {
+    let secs = crate::store::now().saturating_sub(at);
+    match secs {
+        0..60 => "방금".into(),
+        60..3600 => format!("{}분 전", secs / 60),
+        3600..86400 => format!("{}시간 전", secs / 3600),
+        _ => format!("{}일 전", secs / 86400),
+    }
+}
+
+fn history_lines(store: &Store) -> Vec<String> {
+    let text = std::fs::read_to_string(store.history_path()).unwrap_or_default();
+    let mut lines: Vec<String> = text
+        .lines()
+        .rev()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .map(|v| {
+            format!(
+                "{}  {}  · {}",
+                ago(v["at"].as_u64().unwrap_or(0)),
+                v["event"].as_str().unwrap_or(""),
+                v["progress"].as_str().unwrap_or("")
+            )
+        })
+        .collect();
+    if lines.is_empty() {
+        lines.push("아직 변경 이력이 없습니다".into());
+    }
+    lines
+}
+
+const HELP: &str = "↑↓ / j k   목록·항목 이동\nEnter      항목 상세\n/          검색 (Enter 확정, Esc 취소)\nf          미완료만 보기\nh          변경 이력\nEsc        진행 막대로 돌아가기\nq / Ctrl-C 종료\n\n퍼센트는 완료/(전체−취소)이며 에이전트 보고 기준입니다.";
+
+fn draw_panel(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, ui: &Ui, history: &[String]) {
+    let area = frame.area();
+    if area.is_empty() {
+        return;
+    }
+    let pad = if area.width >= 24 {
+        2
+    } else {
+        u16::from(area.width > 4)
+    };
+    let width = area.width.saturating_sub(pad * 2);
+    let (done, total) = plan.map_or((0, 0), Plan::progress);
+    let metric = (done * 100)
+        .checked_div(total)
+        .map(|pct| format!("{pct}% · {done}/{total}"))
+        .unwrap_or_else(|| "체크율 미정".into());
+    let title = match ui.mode {
+        _ if ui.typing => format!("검색: {}▏", ui.query),
+        Mode::List if !ui.query.is_empty() => format!("검색: {} · Esc 돌아가기", ui.query),
+        Mode::List if ui.unfinished => "미완료 · f 전체 보기".into(),
+        Mode::List => "목록 · Enter 상세 · ? 도움말".into(),
+        Mode::Detail => "항목 상세 · Esc 목록".into(),
+        Mode::History => "변경 이력 · Esc 돌아가기".into(),
+        Mode::Help => "도움말 · Esc 돌아가기".into(),
+        Mode::Bar => String::new(),
+    };
+    let left = width.saturating_sub(metric.width() as u16 + 2) as usize;
+    let header = Line::from(vec![
+        Span::styled(ellipsize(&title, left), Style::new().fg(p.text).bold()),
+        Span::raw("  "),
+        Span::styled(metric, Style::new().fg(p.accent).bold()),
+    ]);
+    let rect = |row: u16| Rect {
+        x: area.x + pad,
+        y: area.y + row,
+        width,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(header), rect(0));
+    let rows = usize::from(area.height.saturating_sub(1));
+    let body: Vec<Line> = match ui.mode {
+        Mode::List | Mode::Bar => {
+            let items = visible(plan, ui);
+            if items.is_empty() {
+                vec![Line::styled(
+                    if plan.is_none_or(|p| p.items.is_empty()) {
+                        "에이전트가 계획을 기록하면 여기에 표시됩니다"
+                    } else {
+                        "해당하는 항목이 없습니다 · Esc 돌아가기"
+                    },
+                    Style::new().fg(p.muted),
+                )]
+            } else {
+                let start = ui.selected.saturating_sub(rows.saturating_sub(1));
+                items
+                    .iter()
+                    .enumerate()
+                    .skip(start)
+                    .map(|(n, i)| {
+                        let chosen = n == ui.selected;
+                        let color = match i.state {
+                            State::Blocked => p.warning,
+                            State::Doing => p.accent,
+                            State::Done | State::Cancelled => p.muted,
+                            State::Todo => p.text,
+                        };
+                        let text = format!(
+                            "{}{} {}. {}",
+                            if chosen { "› " } else { "  " },
+                            i.state.mark(),
+                            i.id,
+                            i.title
+                        );
+                        let style = Style::new().fg(color);
+                        Line::styled(
+                            ellipsize(&text, width as usize),
+                            if chosen {
+                                style.add_modifier(Modifier::BOLD)
+                            } else {
+                                style
+                            },
+                        )
+                    })
+                    .collect()
+            }
+        }
+        Mode::Detail => {
+            let items = visible(plan, ui);
+            match items.get(ui.selected) {
+                None => vec![],
+                Some(i) => {
+                    let mut out = vec![
+                        Line::styled(
+                            format!("{} {}. {}", i.state.mark(), i.id, i.title),
+                            Style::new().fg(p.text).bold(),
+                        ),
+                        Line::from(vec![
+                            Span::styled("상태 · ", Style::new().fg(p.muted)),
+                            Span::styled(label(i.state), Style::new().fg(p.text)),
+                        ]),
+                    ];
+                    if let Some(r) = &i.reason {
+                        out.push(Line::from(vec![
+                            Span::styled("이유 · ", Style::new().fg(p.muted)),
+                            Span::styled(r.clone(), Style::new().fg(p.warning)),
+                        ]));
+                    }
+                    if let Some(n) = &i.needs {
+                        out.push(Line::from(vec![
+                            Span::styled("필요 · ", Style::new().fg(p.muted)),
+                            Span::styled(n.clone(), Style::new().fg(p.warning)),
+                        ]));
+                    }
+                    if let Some(at) = i.done_at {
+                        out.push(Line::from(vec![
+                            Span::styled("완료 · ", Style::new().fg(p.muted)),
+                            Span::styled(ago(at), Style::new().fg(p.text)),
+                        ]));
+                    }
+                    if let Some(goal) = plan.and_then(|p| p.goal.as_deref()) {
+                        out.push(Line::from(vec![
+                            Span::styled("목표 · ", Style::new().fg(p.muted)),
+                            Span::styled(goal.to_string(), Style::new().fg(p.text)),
+                        ]));
+                    }
+                    out.push(Line::styled(
+                        "근거 · 에이전트 보고 (검증 아님)",
+                        Style::new().fg(p.metadata),
+                    ));
+                    out
+                }
+            }
+        }
+        Mode::History => history
+            .iter()
+            .map(|h| Line::styled(h.clone(), Style::new().fg(p.muted)))
+            .collect(),
+        Mode::Help => HELP
+            .lines()
+            .map(|h| Line::styled(h.to_string(), Style::new().fg(p.muted)))
+            .collect(),
+    };
+    let scroll = if matches!(ui.mode, Mode::Detail | Mode::History | Mode::Help) {
+        ui.scroll.min(body.len().saturating_sub(rows))
+    } else {
+        0
+    };
+    let body_rect = Rect {
+        x: area.x + pad,
+        y: area.y + 1,
+        width,
+        height: area.height.saturating_sub(1),
+    };
+    frame.render_widget(
+        Paragraph::new(body.into_iter().skip(scroll).collect::<Vec<_>>())
+            .wrap(Wrap { trim: false }),
+        body_rect,
+    );
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            frame.buffer_mut()[(x, y)].bg = p.track;
+        }
+    }
+}
+
 pub fn watch(store: &Store) -> Result<()> {
     let mut plan = store.load().ok().flatten();
     let mut error: Option<String> = None;
@@ -336,17 +666,28 @@ pub fn watch(store: &Store) -> Result<()> {
         .display()
         .to_string();
     let colors = palette(store);
+    let mut ui = Ui::default();
+    let mut history: Vec<String> = Vec::new();
     let mut terminal = ratatui::init();
     let result = (|| -> Result<bool> {
         loop {
-            terminal.draw(|f| draw(f, &colors, plan.as_ref(), error.as_deref(), &source))?;
+            terminal.draw(|f| {
+                if ui.mode == Mode::Bar && !ui.typing {
+                    draw(f, &colors, plan.as_ref(), error.as_deref(), &source)
+                } else {
+                    draw_panel(f, &colors, plan.as_ref(), &ui, &history)
+                }
+            })?;
             if event::poll(Duration::from_millis(500))? {
-                if let Event::Key(key) = event::read()? {
-                    let ctrl_c = key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL);
-                    if key.kind == KeyEventKind::Press && (key.code == KeyCode::Char('q') || ctrl_c)
-                    {
+                if let Event::Key(key) = event::read()?
+                    && key.kind == KeyEventKind::Press
+                {
+                    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                    if let Action::Quit = handle(&mut ui, key.code, ctrl, plan.as_ref()) {
                         return Ok(true);
+                    }
+                    if ui.mode == Mode::History {
+                        history = history_lines(store);
                     }
                 }
                 continue;
@@ -358,6 +699,9 @@ pub fn watch(store: &Store) -> Result<()> {
                     Ok(p) => {
                         plan = p;
                         error = None;
+                        if ui.mode == Mode::History {
+                            history = history_lines(store);
+                        }
                     }
                     // Keep the last good plan visible and say it is stale.
                     Err(e) => error = Some(e.to_string()),
@@ -483,5 +827,100 @@ mod tests {
                 .iter()
                 .all(|c| *c == SIGNAL.track)
         );
+    }
+
+    fn press(ui: &mut Ui, plan: &Plan, keys: &[KeyCode]) {
+        for k in keys {
+            handle(ui, *k, false, Some(plan));
+        }
+    }
+
+    fn panel(plan: &Plan, ui: &Ui, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(70, height)).unwrap();
+        terminal
+            .draw(|f| {
+                draw_panel(
+                    f,
+                    &SIGNAL,
+                    Some(plan),
+                    ui,
+                    &["방금 done 1 · 1/3 (33%)".into()],
+                )
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| (0..70).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replace(' ', "")
+    }
+
+    #[test]
+    fn arrow_opens_list_at_current_item_and_enter_shows_detail() {
+        let mut plan = plan(3);
+        plan.set(
+            "2",
+            State::Blocked,
+            Some("키필요".into()),
+            Some("user".into()),
+        )
+        .unwrap();
+        plan.set("3", State::Doing, None, None).unwrap();
+        let mut ui = Ui::default();
+        press(&mut ui, &plan, &[KeyCode::Down]);
+        assert_eq!((ui.mode, ui.selected), (Mode::List, 2));
+        press(&mut ui, &plan, &[KeyCode::Up, KeyCode::Enter]);
+        assert_eq!(ui.mode, Mode::Detail);
+        let text = panel(&plan, &ui, 10);
+        assert!(text.contains("[!]2.항목2"), "{text}");
+        assert!(text.contains("이유·키필요"), "{text}");
+        assert!(text.contains("필요·user"), "{text}");
+        press(&mut ui, &plan, &[KeyCode::Esc]);
+        assert_eq!(ui.mode, Mode::List);
+        press(&mut ui, &plan, &[KeyCode::Esc]);
+        assert_eq!(ui.mode, Mode::Bar);
+    }
+
+    #[test]
+    fn search_filters_and_q_is_typed_while_searching() {
+        let mut plan = plan(3);
+        plan.add("quick fix").unwrap();
+        let mut ui = Ui::default();
+        press(
+            &mut ui,
+            &plan,
+            &[KeyCode::Char('/'), KeyCode::Char('q'), KeyCode::Char('u')],
+        );
+        assert!(matches!(
+            handle(&mut ui, KeyCode::Enter, false, Some(&plan)),
+            Action::None
+        ));
+        assert_eq!(ui.query, "qu");
+        let text = panel(&plan, &ui, 8);
+        assert!(text.contains("4.quickfix"), "{text}");
+        assert!(!text.contains("항목1"), "{text}");
+        assert!(matches!(
+            handle(&mut ui, KeyCode::Char('q'), false, Some(&plan)),
+            Action::Quit
+        ));
+    }
+
+    #[test]
+    fn unfinished_filter_and_history_and_help() {
+        let mut plan = plan(3);
+        plan.set("1", State::Done, None, None).unwrap();
+        let mut ui = Ui::default();
+        press(&mut ui, &plan, &[KeyCode::Char('f')]);
+        let text = panel(&plan, &ui, 8);
+        assert!(!text.contains("항목1") && text.contains("항목2"), "{text}");
+        press(&mut ui, &plan, &[KeyCode::Char('h')]);
+        assert!(panel(&plan, &ui, 8).contains("done1"));
+        press(&mut ui, &plan, &[KeyCode::Char('?')]);
+        assert!(panel(&plan, &ui, 12).contains("미완료만보기"));
+        assert!(matches!(
+            handle(&mut ui, KeyCode::Char('c'), true, Some(&plan)),
+            Action::Quit
+        ));
     }
 }

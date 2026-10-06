@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0-alpha.2 — 2026-10-06 (prerelease)
+
+- Restore the interactive views on request: ↑↓/j k list, Enter detail, `/`
+  search, `f` unfinished only, `h` history, `?` help, Esc back to the bar.
+  Reading the status still needs no keys.
+- The `ap` skill asks agents to record any multi-step task without prompting,
+  for global installation.
+
 ## 3.0.0-alpha.1 — 2026-10-06 (prerelease)
 
 - Replace native hooks, launchers, session observation and the v2 work-record
@@ -16,7 +24,7 @@
 - Signal layout with the brighter tuned colors and a soft gradient at the
   progress edge. Project `.agent-progress/ui.json` themes are still read.
 - Four skills are merged into one `ap` skill. Per-project pane size moved to
-  `AP_PANE_SIZE` (default 10%); detail/search/history views were not carried over.
+  `AP_PANE_SIZE` (default 10%).
 
 ## 1.2.8 — 2026-10-01
 

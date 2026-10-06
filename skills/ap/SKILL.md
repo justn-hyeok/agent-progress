@@ -1,11 +1,11 @@
 ---
 name: ap
-description: Record the current work plan with the ap CLI so the user sees progress in a separate pane. Use when the project has adopted ap or the user asks for AP tracking.
+description: Record your working plan with the ap CLI so the user sees progress in a pane below yours. Use for any multi-step task (implementation, debugging, review, research) as soon as you know the steps; skip only for one-shot questions or trivial single actions.
 ---
 
 # ap — agent-progress
 
-Keep your real plan in `ap` while you work. A progress pane opens under your
+Keep your real plan in `ap` while you work, without being asked. A progress pane opens under your
 pane automatically on the first change (Herdr or tmux). You never pass IDs,
 revisions or session names: `ap` keys the plan to your pane.
 

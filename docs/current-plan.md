@@ -30,6 +30,15 @@ file. main and the Homebrew formula were not changed. Installed on this Mac in
 ~/.local via install.sh (rollback target 2.0.2); a fresh zsh resolves
 ap 3.0.0-alpha.1. Skills are not installed anywhere yet (user decision pending).
 
+Prerelease 3.0.0-alpha.2 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-alpha.2
+Tag/source 1754a77ee7cd652c84ced0856f0f293e1a2514f2 passed Rust CI 37404075296.
+Archive SHA-256 57c346a156e27663b4fdadc5175f883775b42f5a317d1d507ecd4762000dc656;
+repack byte-identical; smoke passed; downloaded asset matched. Restores
+list/detail/search/history/help views (live-checked in a Herdr pane). Installed
+in ~/.local (rollback target 3.0.0-alpha.1). The single ap skill is installed
+globally at ~/.agents/skills/ap with symlinks from ~/.claude, ~/.codex and
+~/.config/opencode skills (user decision 2026-10-06).
+
 Evidence: 11 CLI integration tests and 3 render tests, fmt and Clippy pass; one live Herdr run
 opened, refreshed, closed, suppressed, reopened and q-exited the viewer with
 no leftover pane. No AP acceptance item is certified by this stage. The v2.0.2

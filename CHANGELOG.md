@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.0 — 2026-10-06
+
+Stable release of the 3.0 prereleases below: a minimal CLI the agent calls
+(`goal/add/start/done/block/cancel`, stable numbers), a Signal-style progress
+pane under the verified caller pane (Herdr, tmux, Codex by thread title,
+OpenCode), on-request list/detail/search/history views and one `ap` skill.
+Hooks, launchers, shell integration, `setup`/`config` and the v2 record
+protocol are removed; existing `.agent-progress` data is kept but not read.
+
 ## 3.0.0-beta.2 — 2026-10-06 (prerelease)
 
 Fixes from code review:

@@ -1,5 +1,7 @@
 # Release handoff
 
+3.0.0 is the stable release (see docs/current-plan.md for evidence).
+
 3.0.0-beta.2 (prerelease, https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-beta.2)
 fixes all code-review findings and is installed in ~/.local; see current-plan.md.
 

@@ -265,6 +265,11 @@ fn print_plan(plan: &Plan) {
 }
 
 fn main() {
+    // Behave like other CLIs when output is piped into `head`: exit quietly instead
+    // of panicking on a closed pipe.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     if let Err(e) = run() {
         eprintln!("ap: {e:#}");
         std::process::exit(1);

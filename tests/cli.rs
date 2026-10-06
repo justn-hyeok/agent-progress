@@ -320,3 +320,32 @@ fn close_stops_a_live_viewer_through_the_plan() {
     assert!(ok(dir.path(), &["close"]).contains("진행 창을 닫았습니다"));
     assert!(watcher.join().unwrap());
 }
+
+#[test]
+fn closed_output_pipe_does_not_panic() {
+    use std::io::Read;
+    let dir = tempfile::tempdir().unwrap();
+    for n in 0..200 {
+        ok(dir.path(), &["--no-view", "add", &format!("item {n}")]);
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ap"))
+        .arg("status")
+        .current_dir(dir.path())
+        .env_remove("HERDR_ENV")
+        .env_remove("TMUX_PANE")
+        .env_remove("CODEX_THREAD_ID")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    child.wait().unwrap();
+    assert!(!stderr.contains("panicked"), "{stderr}");
+}

@@ -7,8 +7,9 @@ pub fn inside() -> bool {
     std::env::var("HERDR_ENV").as_deref() == Ok("1")
 }
 
+/// Callers decide when Herdr is in play (inside a pane, or a known agent daemon that
+/// runs commands outside the pane); the CLI itself reports failure when it isn't.
 fn call(args: &[&str]) -> Result<Value> {
-    ensure!(inside(), "Herdr 안에서만 진행 창을 열 수 있습니다");
     let out = Command::new("herdr")
         .args(args)
         .output()
@@ -134,6 +135,26 @@ pub fn codex_pane_for_thread(thread: &str, root: &Path) -> Option<String> {
         p["agent"] == "codex"
             && (title == name || title.starts_with(&format!("{name} | ")))
             && Path::new(cwd).starts_with(root)
+    });
+    let pane = found.next()?.get("pane_id")?.as_str()?.to_string();
+    found.next().is_none().then_some(pane)
+}
+
+/// The single Herdr pane running `agent` whose cwd is inside the project. For agents
+/// that run commands from a shared daemon without any session identity (Cline).
+/// None when absent or ambiguous; never a guess.
+pub fn unique_agent_pane(agent: &str, root: &Path) -> Option<String> {
+    let list = call(&["pane", "list"]).ok()?;
+    let panes = list
+        .pointer("/result/panes")
+        .or_else(|| list.get("panes"))?
+        .as_array()?;
+    let mut found = panes.iter().filter(|p| {
+        let cwd = p["foreground_cwd"]
+            .as_str()
+            .or_else(|| p["cwd"].as_str())
+            .unwrap_or("");
+        p["agent"] == agent && Path::new(cwd).starts_with(root)
     });
     let pane = found.next()?.get("pane_id")?.as_str()?.to_string();
     found.next().is_none().then_some(pane)

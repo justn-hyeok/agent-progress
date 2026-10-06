@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0 — 2026-10-06
+
+- Cline support: Cline runs commands from a shared daemon with no Herdr or
+  session identity, so `ap` uses the single Cline pane working in the project
+  (none when ambiguous).
+- Verified live in Herdr: Cursor CLI, Copilot CLI, Cline, OMP, Gemini CLI,
+  Devin CLI, pi, Antigravity CLI and Command Code, in addition to Claude Code,
+  Codex and OpenCode. README lists the support table.
+- `ap` exits quietly when its output pipe closes (e.g. `ap status | head -1`).
+
 ## 3.0.0 — 2026-10-06
 
 Stable release of the 3.0 prereleases below: a minimal CLI the agent calls

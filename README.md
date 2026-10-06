@@ -52,6 +52,33 @@ ap view              # 현재 터미널에서 진행 창 실행
 스레드 이름은 첫 응답 뒤에 정해지므로, 그 전의 기록은 저장만 되고 다음 기록 때 창이 열립니다.
 계획은 `codex-<thread>`로 세션별로 저장됩니다.
 
+## 지원 하네스
+
+`ap`는 셸 명령을 실행할 수 있는 에이전트라면 어디서든 기록할 수 있습니다. 아래는 Herdr에서 진행 창이
+에이전트 pane 바로 아래에 자동으로 열리는 것을 실제로 확인한 목록입니다(2026-10-06).
+
+| 하네스 | pane 확인 방식 | 스킬 위치 |
+| --- | --- | --- |
+| Claude Code | 조상 프로세스 | `~/.claude/skills` |
+| Codex 0.160 | 공유 데몬 → 스레드 이름 제목 | `~/.codex/skills` |
+| OpenCode 2.0 | 조상 프로세스 | `~/.config/opencode/skills` |
+| Cursor CLI | 조상 프로세스 | `~/.agents/skills` |
+| Copilot CLI | 조상 프로세스 | `~/.agents/skills` |
+| Cline 3.0 | 공유 데몬 → 프로젝트의 유일한 Cline pane | `~/.agents/skills` |
+| OMP | 조상 프로세스 | `~/.agents/skills` |
+| Gemini CLI 0.62 | 조상 프로세스 | `~/.agents/skills` |
+| Devin CLI | 조상 프로세스 | `~/.agents/skills` |
+| pi | 조상 프로세스 | `~/.agents/skills` |
+| Antigravity CLI (agy) | 조상 프로세스 | `~/.gemini/antigravity-cli/skills` |
+| Command Code | 조상 프로세스 | `~/.agents/skills` |
+
+스킬은 인식하지만 실제 동작은 아직 확인하지 못한 하네스: Amp(로그인 만료), Hermes(첫 실행 시 사용 통계
+동의 선택 대기, `skills.external_dirs`에 등록), GJC(기본 모델 크레딧 부족, Composer는 bash 차단; 스캔
+폴더에 실제 디렉터리로 복사). tmux는 Herdr 대신 사용할 수 있는 터미널로 확인했습니다.
+
+Cline은 세션 식별 정보 없이 공유 데몬에서 명령을 실행하므로, 같은 프로젝트에서 Cline pane을 두 개 이상
+열면 진행 창을 자동으로 열지 않습니다.
+
 ## 진행 창
 
 - 첫 변경 때 열리고 이후에는 재사용합니다. 파일을 0.5초 간격으로 확인해 갱신합니다.

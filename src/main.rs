@@ -115,8 +115,14 @@ fn context(plan: Option<String>) -> Result<Ctx> {
         (None, Some(thread)) if herdr::inside() => herdr::codex_pane_for_thread(thread, &root),
         _ => None,
     };
+    // Cline runs commands from a daemon without HERDR_* or any session identity; use the
+    // one Cline pane working in this project, if there is exactly one.
+    let cline_daemon = std::env::var_os("CLINE_WRAPPER_PATH").is_some() && !herdr::inside();
+    let cline_pane = (herdr_pane.is_none() && codex_pane.is_none() && cline_daemon)
+        .then(|| herdr::unique_agent_pane("cline", &root))
+        .flatten();
     let tmux_pane = std::env::var("TMUX_PANE").ok().filter(|p| !p.is_empty());
-    let (host, source_pane) = match (herdr_pane.or(codex_pane.clone()), tmux_pane) {
+    let (host, source_pane) = match (herdr_pane.or(codex_pane.clone()).or(cline_pane), tmux_pane) {
         (Some(p), _) => (Host::Herdr, Some(p)),
         (None, Some(p)) if codex_thread.is_none() => (Host::Tmux, Some(p)),
         _ => (Host::None, None),
@@ -130,7 +136,7 @@ fn context(plan: Option<String>) -> Result<Ctx> {
         (None, Some(thread), ..) => (format!("codex-{thread}"), None),
         _ => ("default".into(), None),
     };
-    if source_pane.is_none() && herdr::inside() {
+    if source_pane.is_none() && (herdr::inside() || cline_daemon) {
         eprintln!(
             "ap: 이 명령이 실행된 Herdr pane을 확인할 수 없어 진행 창을 자동으로 열지 않습니다. Codex라면 스레드 이름이 정해진 뒤(첫 응답 후) 다시 시도됩니다. 지금 계획은 다른 pane에서 `ap --plan {key} view`로 볼 수 있습니다"
         );

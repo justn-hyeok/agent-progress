@@ -71,10 +71,13 @@ ap view              # 현재 터미널에서 진행 창 실행
 | pi | 조상 프로세스 | `~/.agents/skills` |
 | Antigravity CLI (agy) | 조상 프로세스 | `~/.gemini/antigravity-cli/skills` |
 | Command Code | 조상 프로세스 | `~/.agents/skills` |
+| Amp | 조상 프로세스 | `~/.agents/skills` |
+| Hermes | 조상 프로세스 | `skills.external_dirs` |
+| GJC | 조상 프로세스 | 스캔 폴더에 실제 디렉터리 |
 
-스킬은 인식하지만 실제 동작은 아직 확인하지 못한 하네스: Amp(로그인 만료), Hermes(첫 실행 시 사용 통계
-동의 선택 대기, `skills.external_dirs`에 등록), GJC(기본 모델 크레딧 부족, Composer는 bash 차단; 스캔
-폴더에 실제 디렉터리로 복사). tmux는 Herdr 대신 사용할 수 있는 터미널로 확인했습니다.
+GJC는 스캔 폴더 밖을 가리키는 링크를 거부하므로 스킬을 실제 디렉터리로 복사해 둡니다. Hermes는 큐레이터가
+관리하는 폴더 대신 읽기 전용 `skills.external_dirs`에 등록합니다. tmux는 Herdr 대신 쓸 수 있는 터미널로
+확인했습니다.
 
 Cline은 세션 식별 정보 없이 공유 데몬에서 명령을 실행하므로, 같은 프로젝트에서 Cline pane을 두 개 이상
 열면 진행 창을 자동으로 열지 않습니다.

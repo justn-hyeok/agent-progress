@@ -50,6 +50,15 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+Remaining harnesses (2026-10-06, user-authorized login/free-model setup):
+Amp (browser device login; custom-url router "Command Code (free)" on the
+user's Amp account mapping all 49 Amp models to inclusionai/ling-3.0-flash-sante:free,
+key piped from Keychain), Hermes (cto profile: commandcode provider with
+key_cmd reading Keychain, default model ling-3.1-flash:free; telemetry left
+at "No thanks"), GJC (two stale stored commandcode-goat keys disabled, not
+deleted; workbuddy provider disabled; backups *.bak-ap-20261006) all opened
+the viewer directly below their pane. All 15 installed harnesses are verified.
+
 3.1.0 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.1.0 (Latest)
 Release commit cdb9b7a passed Rust CI 37419786369; archive SHA-256
 ccd651a9f2c887cd6d88775360a8afc8fe0cd7048841d0096cff8e7b352c0982 (repack

@@ -39,6 +39,16 @@ in ~/.local (rollback target 3.0.0-alpha.1). The single ap skill is installed
 globally at ~/.agents/skills/ap with symlinks from ~/.claude, ~/.codex and
 ~/.config/opencode skills (user decision 2026-10-06).
 
+Prerelease 3.0.0-beta.2 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-beta.2
+Tag/source ec935c68ea1febcfb9900af93acb3977a5abf4a8 passed Rust CI 37405081342.
+Archive SHA-256 cc525e7fd4f74f47b7d1a0925c1f6df739b36d150bc59843a2564ae085ff86ca;
+repack byte-identical; smoke passed; downloaded asset matched; installed in
+~/.local. Fixes the 10 code-review findings (instance + heartbeat viewers,
+plan-based close, safe archives with history, done_at, single ps snapshot).
+Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
+viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
+the same feature set as alpha.2.
+
 Evidence: 11 CLI integration tests and 3 render tests, fmt and Clippy pass; one live Herdr run
 opened, refreshed, closed, suppressed, reopened and q-exited the viewer with
 no leftover pane. No AP acceptance item is certified by this stage. The v2.0.2

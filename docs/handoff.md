@@ -1,5 +1,8 @@
 # Release handoff
 
+3.0.0-beta.2 (prerelease, https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-beta.2)
+fixes all code-review findings and is installed in ~/.local; see current-plan.md.
+
 3.0.0-alpha.2 (prerelease, https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-alpha.2)
 restores list/detail/search/history views and is installed in ~/.local. The
 ap skill is installed globally (~/.agents/skills/ap, linked for Claude, Codex,

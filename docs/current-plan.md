@@ -49,6 +49,17 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+Live verification after beta.2 (2026-10-06, installed beta.2 binary):
+- tmux 3.6a (isolated server): viewer split below the source pane, updated,
+  `ap close` removed the pane, no reopen while dismissed, `ap open` reopened,
+  `q` closed it and stored the dismissal.
+- OpenCode 2.0.20 in Herdr: HERDR_PANE_ID passed the ancestor check (bash tool
+  runs under the pane's OpenCode), plan keyed to that pane, viewer opened
+  directly below it. OpenCode auto-updated itself from 1.18.30 on launch.
+- package_smoke.py --previous: beta.1 → beta.2 upgrade, rollback (beta.1 reads
+  the beta.2 plan unchanged), re-upgrade, uninstall keeping project data and an
+  unrelated bin file.
+
 Evidence: 11 CLI integration tests and 3 render tests, fmt and Clippy pass; one live Herdr run
 opened, refreshed, closed, suppressed, reopened and q-exited the viewer with
 no leftover pane. No AP acceptance item is certified by this stage. The v2.0.2

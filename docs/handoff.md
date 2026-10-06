@@ -1,5 +1,14 @@
 # Release handoff
 
+3.0.0-alpha.1 is a prerelease at https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-alpha.1,
+built from branch feat/minimal-cli (not merged to main). It replaces hooks,
+launchers and the v2 record protocol with a minimal CLI (goal/add/start/done/
+block) and a Signal-style progress pane. Homebrew still installs 1.2.8. This
+Mac runs the alpha from ~/.local (rollback: install.sh --rollback → 2.0.2).
+Open decisions: where to install the single ap skill (repo vs global), and
+whether to restore detail/search/history views. Unverified: tmux, OpenCode,
+`ap new` with an open viewer. See the first section of docs/current-plan.md.
+
 1.2.8 was published at https://github.com/justn-hyeok/agent-progress/releases/tag/v1.2.8
 and installed on this Mac via Homebrew. Repeated native-hook openings no longer reset a
 manually adjusted Herdr progress pane to the saved size. The 1.2.7 behavior

@@ -8,7 +8,7 @@ the agent calls directly. Branch `feat/minimal-cli`, uncommitted.
 
 - [x] [AP-05/minimal] Stable-numbered items, pane-keyed plans, locked atomic store, history JSONL.
 - [x] [AP-06/minimal] Herdr/tmux auto-open once, reuse, `q`/`ap close` remove the pane, `ap open` reopens.
-- [ ] [AP-19/minimal] Packaging scripts, Homebrew formula and CI still target 1.2.8 and must be reworked before release.
+- [x] [AP-19/minimal] Published prerelease 3.0.0-alpha.1 from this branch; Homebrew formula intentionally stays on 1.2.8.
 - [ ] [AP-24/minimal] User acceptance of the new CLI; then update the repo AGENTS.md v2 block and installed skills.
 
 Codex finding (live, Codex 0.160.1): commands run under the shared
@@ -20,6 +20,15 @@ Resolution without changing how Codex runs (live, Codex 0.160 daemon mode):
 CODEX_THREAD_ID → thread_name from session_index.jsonl → the unique Herdr
 pane running Codex titled "<thread_name> | …" inside the project. The viewer
 opened directly below that Codex pane; ambiguous or unnamed threads open nothing.
+
+Prerelease 3.0.0-alpha.1 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-alpha.1
+Tag/source 29ce8d3a4458b787468e4622a5ad979f5d41f51f on feat/minimal-cli passed
+Rust CI 37402981528. Archive SHA-256
+0cfe8c5a8e994c311a248aadf214416ea6499e1ba508e01021c305a0d8a9621c; repack
+byte-identical; package smoke passed; the downloaded asset matched the local
+file. main and the Homebrew formula were not changed. Installed on this Mac in
+~/.local via install.sh (rollback target 2.0.2); a fresh zsh resolves
+ap 3.0.0-alpha.1. Skills are not installed anywhere yet (user decision pending).
 
 Evidence: 11 CLI integration tests and 3 render tests, fmt and Clippy pass; one live Herdr run
 opened, refreshed, closed, suppressed, reopened and q-exited the viewer with

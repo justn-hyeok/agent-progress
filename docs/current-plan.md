@@ -9,7 +9,8 @@ the agent calls directly. Branch `feat/minimal-cli`, uncommitted.
 - [x] [AP-05/minimal] Stable-numbered items, pane-keyed plans, locked atomic store, history JSONL.
 - [x] [AP-06/minimal] Herdr/tmux auto-open once, reuse, `q`/`ap close` remove the pane, `ap open` reopens.
 - [x] [AP-19/minimal] Published prerelease 3.0.0-alpha.1 from this branch; Homebrew formula intentionally stays on 1.2.8.
-- [ ] [AP-24/minimal] User acceptance of the new CLI; then update the repo AGENTS.md v2 block and installed skills.
+- [x] [AP-19/minimal-stable] Stable 3.0.0 on main, Homebrew formula and local installs updated.
+- [ ] [AP-24/minimal] Ongoing human acceptance of the new CLI in daily use (AGENTS.md v2 block removed and the single skill installed globally on 2026-10-06).
 
 Codex finding (live, Codex 0.160.1): commands run under the shared
 app-server daemon, whose HERDR_PANE_ID belongs to the pane that started it,
@@ -48,6 +49,15 @@ plan-based close, safe archives with history, done_at, single ps snapshot).
 Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
+
+Stable 3.0.0 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0 (Latest)
+Release commit 4b86bd979fe04cb1c23971f52e0d74890975e2fe fast-forwarded main and
+passed Rust CI 37416614875. Archive SHA-256
+be651a1087d88a0e5d5032a15b7d623ba6ff4438c9ebe3871deee2dfd22294c0; repack
+byte-identical; beta.2 → 3.0.0 upgrade/rollback smoke passed; the downloaded
+asset matched. Formula commit 577b1eda passed Homebrew install CI 37416793911
+and Rust CI 37416793916. This Mac: `brew upgrade` to 3.0.0 and `brew test`
+passed; ~/.local also runs 3.0.0 (PATH resolves ~/.local/bin/ap first).
 
 Live verification after beta.2 (2026-10-06, installed beta.2 binary):
 - tmux 3.6a (isolated server): viewer split below the source pane, updated,

@@ -50,6 +50,23 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+3.1.0 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.1.0 (Latest)
+Release commit cdb9b7a passed Rust CI 37419786369; archive SHA-256
+ccd651a9f2c887cd6d88775360a8afc8fe0cd7048841d0096cff8e7b352c0982 (repack
+byte-identical, 3.0.0 → 3.1.0 upgrade/rollback smoke, downloaded asset
+matched). Formula 902d483 passed Homebrew install CI 37419906765 and Rust CI
+37419906745; brew upgrade + brew test and ~/.local install on this Mac.
+Harness live checks in Herdr (viewer directly below the agent pane): Cursor
+CLI, Copilot CLI, Cline (daemon → unique Cline pane), OMP, Gemini CLI, Devin,
+pi, Antigravity CLI, Command Code, plus Claude Code, Codex, OpenCode. Skill
+discovery confirmed but live use blocked by user-side state: Amp (expired
+login), Hermes (first-run telemetry choice; external_dirs entry added to
+~/.hermes/profiles/cto/config.yaml with backup), GJC (default model out of
+credits; Composer blocks bash and its model fabricated command output). Skill
+installs: ~/.gemini/antigravity-cli/skills/ap link, ~/.agents/stack/harnesses/
+hermes/skills/ap link, ~/.agents/stack/harnesses/gjc/skills/ap copy;
+~/.agents/stack verify.py and unit tests passed.
+
 Stable 3.0.0 (2026-10-06): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0 (Latest)
 Release commit 4b86bd979fe04cb1c23971f52e0d74890975e2fe fast-forwarded main and
 passed Rust CI 37416614875. Archive SHA-256

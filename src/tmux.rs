@@ -1,4 +1,4 @@
-use crate::{herdr::shell_quote, store::Viewer};
+use crate::store::Viewer;
 use anyhow::{Context, Result, ensure};
 use std::{path::Path, process::Command};
 
@@ -16,19 +16,14 @@ fn tmux(args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-/// tmux pane IDs (%N) are not reused within a server, so the ID alone identifies the viewer.
-pub fn alive(viewer: &Viewer) -> bool {
-    tmux(&["display-message", "-p", "-t", &viewer.pane, "#{pane_id}"])
-        .is_ok_and(|id| id == viewer.pane)
-}
-
-pub fn open_below(source: &str, cwd: &Path, plan_file: &Path, size_percent: u8) -> Result<Viewer> {
-    let exe = std::env::current_exe()?;
-    let command = format!(
-        "{} view --file {}",
-        shell_quote(exe.to_str().context("binary path encoding")?),
-        shell_quote(plan_file.to_str().context("plan path encoding")?)
-    );
+/// Split below `source` running the viewer; the pane closes when the viewer exits.
+pub fn open_below(
+    source: &str,
+    cwd: &Path,
+    command: &str,
+    instance: &str,
+    size_percent: u8,
+) -> Result<Viewer> {
     let size = format!("{}%", size_percent.clamp(10, 50));
     let cwd = cwd.to_str().context("cwd encoding")?;
     let pane = tmux(&[
@@ -44,19 +39,11 @@ pub fn open_below(source: &str, cwd: &Path, plan_file: &Path, size_percent: u8) 
         "-P",
         "-F",
         "#{pane_id}",
-        &command,
+        command,
     ])?;
     Ok(Viewer {
-        terminal_id: pane.clone(),
+        instance: instance.into(),
         pane,
         reused: false,
     })
-}
-
-pub fn close(viewer: &Viewer) -> Result<bool> {
-    if !alive(viewer) {
-        return Ok(false);
-    }
-    tmux(&["kill-pane", "-t", &viewer.pane])?;
-    Ok(true)
 }

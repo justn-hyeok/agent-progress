@@ -195,3 +195,128 @@ fn corrupt_file_is_reported_not_overwritten() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("손상"));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "{broken");
 }
+
+fn plans_dir(dir: &Path) -> std::path::PathBuf {
+    dir.join(".agent-progress/plans")
+}
+
+fn count_suffix(dir: &Path, suffix: &str) -> usize {
+    std::fs::read_dir(plans_dir(dir))
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .ends_with(suffix)
+        })
+        .count()
+}
+
+#[test]
+fn rapid_archives_never_overwrite_each_other() {
+    let dir = tempfile::tempdir().unwrap();
+    for n in 0..3 {
+        ok(dir.path(), &["add", &format!("plan{n}")]);
+        ok(dir.path(), &["new"]);
+    }
+    assert_eq!(count_suffix(dir.path(), ".archived.json"), 3);
+}
+
+#[test]
+fn new_plan_starts_with_its_own_history() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "old"]);
+    ok(dir.path(), &["done", "1"]);
+    ok(dir.path(), &["new"]);
+    ok(dir.path(), &["add", "fresh"]);
+    let history = ok(dir.path(), &["history"]);
+    assert!(!history.contains("done 1"), "{history}");
+    assert!(history.contains("add fresh"), "{history}");
+    assert_eq!(count_suffix(dir.path(), ".archived.history.jsonl"), 1);
+}
+
+#[test]
+fn leaving_done_clears_completion_time() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    ok(dir.path(), &["done", "1"]);
+    assert!(json(dir.path())["items"][0]["done_at"].is_u64());
+    ok(dir.path(), &["todo", "1"]);
+    assert!(json(dir.path())["items"][0].get("done_at").is_none());
+}
+
+#[test]
+fn blank_block_reason_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    assert!(!ap(dir.path(), &["block", "1", "  "]).status.success());
+}
+
+#[test]
+fn new_keeps_users_dismissal() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    let file = plans_dir(dir.path()).join("default.json");
+    let mut plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    plan["view_suppressed"] = true.into();
+    std::fs::write(&file, plan.to_string()).unwrap();
+    ok(dir.path(), &["new"]);
+    assert_eq!(json(dir.path())["view_suppressed"], true);
+}
+
+#[test]
+fn close_with_dead_viewer_record_reports_nothing_open() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    let file = plans_dir(dir.path()).join("default.json");
+    let mut plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    plan["viewer"] = serde_json::json!({"instance": "gone", "pane": "%9"});
+    std::fs::write(&file, plan.to_string()).unwrap();
+    assert!(ok(dir.path(), &["close"]).contains("열린 진행 창이 없습니다"));
+    let after = json(dir.path());
+    assert!(after.get("viewer").is_none());
+    assert_eq!(after["view_suppressed"], true);
+}
+
+#[test]
+fn close_stops_a_live_viewer_through_the_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    let plans = plans_dir(dir.path());
+    let file = plans.join("default.json");
+    let mut plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    plan["viewer"] = serde_json::json!({"instance": "live-1", "pane": "%9"});
+    std::fs::write(&file, plan.to_string()).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let beat = plans.join("default.viewer.json");
+    std::fs::write(
+        &beat,
+        serde_json::json!({"instance": "live-1", "at": now}).to_string(),
+    )
+    .unwrap();
+    // Simulate the viewer noticing the plan no longer names it and exiting.
+    let watcher = {
+        let file = file.clone();
+        std::thread::spawn(move || {
+            for _ in 0..50 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                let p: serde_json::Value =
+                    serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+                if p.get("viewer").is_none() {
+                    std::fs::remove_file(&beat).unwrap();
+                    return true;
+                }
+            }
+            false
+        })
+    };
+    assert!(ok(dir.path(), &["close"]).contains("진행 창을 닫았습니다"));
+    assert!(watcher.join().unwrap());
+}

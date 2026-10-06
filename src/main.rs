@@ -72,6 +72,9 @@ enum Cmd {
         /// 한 번만 출력하고 종료합니다
         #[arg(long)]
         once: bool,
+        /// 자동으로 연 진행 창의 식별자 (내부용)
+        #[arg(long, hide = true)]
+        instance: Option<String>,
     },
     /// 현재 pane 아래에 진행 창을 엽니다 (자동 열기 억제 해제)
     Open,
@@ -148,12 +151,13 @@ impl Ctx {
         if let (Some(term), Some(existing)) = (&self.terminal, self.store.load()?)
             && existing.terminal_id.as_ref().is_some_and(|t| t != term)
         {
-            // The viewer watches the same path, so it carries over to the fresh plan.
+            // A new terminal is a new session: its own viewer state starts fresh, but a
+            // still-running viewer watches the same path and stays attached.
+            let live = existing.viewer.filter(|v| self.store.beating(&v.instance));
             self.store.archive()?;
             self.store
                 .update(&self.key, "new (pane reused by another terminal)", |p| {
-                    p.viewer = existing.viewer.clone();
-                    p.view_suppressed = existing.view_suppressed;
+                    p.viewer = live;
                     Ok(())
                 })?;
         }
@@ -164,14 +168,6 @@ impl Ctx {
             }
             f(p)
         })
-    }
-
-    fn viewer_alive(&self, v: &Viewer) -> bool {
-        match self.host {
-            Host::Herdr => herdr::alive(v),
-            Host::Tmux => tmux::alive(v),
-            Host::None => false,
-        }
     }
 
     /// Open the viewer under the caller pane unless one is already running or the user dismissed it.
@@ -186,32 +182,82 @@ impl Ctx {
             return Ok(None);
         }
         if let Some(viewer) = &plan.viewer {
-            // q and `ap close` clear the record, so a recorded but dead viewer was closed
-            // from outside (e.g. Herdr's own close). Respect that like q.
-            if self.viewer_alive(viewer) || !force {
+            // q and `ap close` clear the record, so a recorded viewer that stopped beating
+            // was closed from outside (e.g. Herdr's own close). Respect that like q.
+            if self.store.beating(&viewer.instance) || !force {
                 return Ok(None);
             }
+        }
+        if matches!(self.host, Host::None) {
+            return Ok(None);
         }
         let size: u8 = std::env::var("AP_PANE_SIZE")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
-        let viewer = match self.host {
+        let instance = new_instance();
+        let command = viewer_command(&self.store.path, &instance)?;
+        // Record first: the viewer exits as soon as it sees a plan that doesn't name it.
+        self.store.update(&self.key, "", |p| {
+            p.viewer = Some(Viewer {
+                instance: instance.clone(),
+                ..Viewer::default()
+            });
+            p.view_suppressed = false;
+            Ok(())
+        })?;
+        let launched = match self.host {
             Host::Herdr => match herdr::idle_pane_below(source) {
-                Some(pane) => herdr::run_in(&pane, &self.store.path)?,
-                None => herdr::open_below(source, &self.root, &self.store.path, size)?,
+                Some(pane) => herdr::run_in(&pane, &command, &instance),
+                None => herdr::open_below(source, &self.root, &command, &instance, size),
             },
-            Host::Tmux => tmux::open_below(source, &self.root, &self.store.path, size)?,
-            Host::None => return Ok(None),
+            Host::Tmux => tmux::open_below(source, &self.root, &command, &instance, size),
+            Host::None => unreachable!(),
+        };
+        let viewer = match launched {
+            Ok(v) => v,
+            Err(e) => {
+                self.store.update(&self.key, "", |p| {
+                    if p.viewer.as_ref().is_some_and(|v| v.instance == instance) {
+                        p.viewer = None;
+                    }
+                    Ok(())
+                })?;
+                return Err(e);
+            }
         };
         let pane = viewer.pane.clone();
         self.store.update(&self.key, "", |p| {
-            p.viewer = Some(viewer);
-            p.view_suppressed = false;
+            if p.viewer.as_ref().is_some_and(|v| v.instance == instance) {
+                p.viewer = Some(viewer);
+            }
             Ok(())
         })?;
         Ok(Some(pane))
     }
+}
+
+fn new_instance() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{:x}-{:x}", std::process::id(), nanos)
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// Run this exact binary; a bare `ap` could resolve to another installed version.
+fn viewer_command(plan_file: &std::path::Path, instance: &str) -> Result<String> {
+    let exe = std::env::current_exe()?;
+    Ok(format!(
+        "{} view --file {} --instance {}",
+        shell_quote(exe.to_str().context("binary path encoding")?),
+        shell_quote(plan_file.to_str().context("plan path encoding")?),
+        shell_quote(instance)
+    ))
 }
 
 fn print_plan(plan: &Plan) {
@@ -227,6 +273,20 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    // A viewer launched on an explicit file needs no pane resolution.
+    if let Some(Cmd::View {
+        file: Some(file),
+        once,
+        instance,
+    }) = &cli.command
+    {
+        let store = Store::at(file.clone());
+        if *once {
+            println!("{}", view::summary(store.load()?.as_ref()));
+            return Ok(());
+        }
+        return view::watch(&store, instance.as_deref());
+    }
     let ctx = context(cli.plan)?;
     let command = cli.command.unwrap_or(Cmd::Status { json: false });
     let plan = match command {
@@ -284,19 +344,21 @@ fn run() -> Result<()> {
                 .0
         }
         Cmd::New => {
+            // The running viewer and the user's dismissal both belong to this pane, not
+            // to the archived plan.
             let old = ctx.store.load()?;
-            if let Some(v) = old.as_ref().and_then(|p| p.viewer.clone()) {
-                // Keep the viewer pane; it watches the same path and will show the new plan.
-                ctx.store.archive()?;
-                let (p, _) = ctx.update("new", |p| {
-                    p.viewer = Some(v);
-                    Ok(())
-                })?;
-                p
-            } else {
-                ctx.store.archive()?;
-                ctx.update("new", |_| Ok(()))?.0
-            }
+            let viewer = old
+                .as_ref()
+                .and_then(|p| p.viewer.clone())
+                .filter(|v| ctx.store.beating(&v.instance));
+            let suppressed = old.as_ref().is_some_and(|p| p.view_suppressed);
+            ctx.store.archive()?;
+            ctx.update("new", |p| {
+                p.viewer = viewer;
+                p.view_suppressed = suppressed;
+                Ok(())
+            })?
+            .0
         }
         Cmd::Status { json } => {
             let plan = ctx.store.load()?;
@@ -315,13 +377,12 @@ fn run() -> Result<()> {
             }
             return Ok(());
         }
-        Cmd::View { file, once } => {
-            let store = file.map(Store::at).unwrap_or(ctx.store);
+        Cmd::View { once, .. } => {
             if once {
-                println!("{}", view::summary(store.load()?.as_ref()));
+                println!("{}", view::summary(ctx.store.load()?.as_ref()));
                 return Ok(());
             }
-            return view::watch(&store);
+            return view::watch(&ctx.store, None);
         }
         Cmd::Open => {
             let (plan, _) = ctx.update("", |p| {
@@ -336,24 +397,32 @@ fn run() -> Result<()> {
         }
         Cmd::Close => {
             let plan = ctx.store.load()?.context("이 계획이 없습니다")?;
-            let closed = match (&plan.viewer, ctx.host) {
-                (Some(v), Host::Herdr) => herdr::close(v)?,
-                (Some(v), Host::Tmux) => tmux::close(v)?,
-                _ => false,
-            };
+            let running = plan
+                .viewer
+                .as_ref()
+                .filter(|v| ctx.store.beating(&v.instance))
+                .cloned();
+            // The viewer exits by itself once the plan no longer names it.
             ctx.update("", |p| {
                 p.viewer = None;
                 p.view_suppressed = true;
                 Ok(())
             })?;
-            println!(
-                "{}",
-                if closed {
-                    "진행 창을 닫았습니다"
-                } else {
-                    "열린 진행 창이 없습니다"
+            let message = match running {
+                None => "열린 진행 창이 없습니다",
+                Some(v) => {
+                    let stopped = (0..30).any(|_| {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        !ctx.store.beating(&v.instance)
+                    });
+                    if stopped {
+                        "진행 창을 닫았습니다"
+                    } else {
+                        "진행 창에 종료를 요청했습니다"
+                    }
                 }
-            );
+            };
+            println!("{message}");
             return Ok(());
         }
     };

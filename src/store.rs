@@ -48,9 +48,13 @@ pub struct Item {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Viewer {
+    /// Unique per launched viewer. The viewer exits when the plan stops naming it,
+    /// so closing never depends on pane IDs or key presses.
+    #[serde(default)]
+    pub instance: String,
+    #[serde(default)]
     pub pane: String,
-    pub terminal_id: String,
-    /// The user's existing shell pane: stop the viewer on close, never close the pane.
+    /// The user's existing shell pane: the viewer exits back to their shell.
     #[serde(default)]
     pub reused: bool,
 }
@@ -146,10 +150,15 @@ impl Plan {
     ) -> Result<u32> {
         let n = self.find(selector)?;
         if state == State::Blocked {
-            ensure!(reason.is_some(), "막힘에는 이유가 필요합니다");
+            ensure!(
+                reason.as_deref().is_some_and(|r| !r.trim().is_empty()),
+                "막힘에는 이유가 필요합니다"
+            );
         }
         let item = &mut self.items[n];
-        if state == State::Done && item.state != State::Done {
+        if state != State::Done {
+            item.done_at = None;
+        } else if item.state != State::Done {
             item.done_at = Some(now());
         }
         item.state = state;
@@ -214,7 +223,11 @@ pub struct Store {
     pub path: PathBuf,
     lock: PathBuf,
     history: PathBuf,
+    heartbeat: PathBuf,
 }
+
+/// A running viewer refreshes this every few seconds; older than this means gone.
+const HEARTBEAT_STALE_SECS: u64 = 6;
 
 impl Store {
     pub fn new(root: &Path, key: &str) -> Self {
@@ -224,6 +237,7 @@ impl Store {
             path: dir.join(format!("{name}.json")),
             lock: dir.join(format!("{name}.lock")),
             history: dir.join(format!("{name}.history.jsonl")),
+            heartbeat: dir.join(format!("{name}.viewer.json")),
         }
     }
 
@@ -236,6 +250,7 @@ impl Store {
         Store {
             lock: path.with_file_name(format!("{stem}.lock")),
             history: path.with_file_name(format!("{stem}.history.jsonl")),
+            heartbeat: path.with_file_name(format!("{stem}.viewer.json")),
             path,
         }
     }
@@ -292,13 +307,13 @@ impl Store {
         Ok(())
     }
 
-    /// Move the current plan aside (kept for history) so the key starts empty.
+    /// Move the current plan and its history aside (kept, never overwritten) so the
+    /// key starts empty. Caller holds no lock; this takes it.
     pub fn archive(&self) -> Result<Option<PathBuf>> {
         let dir = self.path.parent().context("plan path")?;
         if !self.path.exists() {
             return Ok(None);
         }
-        fs::create_dir_all(dir)?;
         let lock = File::options()
             .create(true)
             .truncate(false)
@@ -307,12 +322,59 @@ impl Store {
         lock.lock_exclusive()?;
         let stem = self
             .path
-            .file_stem()
+            .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("plan");
-        let target = dir.join(format!("{stem}.{}.archived.json", now()));
-        fs::rename(&self.path, &target)?;
-        Ok(Some(target))
+            .and_then(|s| s.strip_suffix(".json"))
+            .unwrap_or("plan")
+            .to_string();
+        let stamp = now();
+        for n in 0.. {
+            let target = dir.join(format!("{stem}.{stamp}-{n}.archived.json"));
+            // hard_link fails instead of replacing an existing archive.
+            match fs::hard_link(&self.path, &target) {
+                Ok(()) => {
+                    fs::remove_file(&self.path)?;
+                    if self.history.exists() {
+                        let history =
+                            dir.join(format!("{stem}.{stamp}-{n}.archived.history.jsonl"));
+                        fs::rename(&self.history, history)?;
+                    }
+                    return Ok(Some(target));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        unreachable!()
+    }
+
+    pub fn beat(&self, instance: &str) -> Result<()> {
+        let dir = self.heartbeat.parent().context("plan path")?;
+        let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+        tmp.write_all(&serde_json::to_vec(
+            &serde_json::json!({"instance": instance, "at": now()}),
+        )?)?;
+        tmp.persist(&self.heartbeat)?;
+        Ok(())
+    }
+
+    pub fn clear_beat(&self, instance: &str) {
+        if self.beating(instance) {
+            let _ = fs::remove_file(&self.heartbeat);
+        }
+    }
+
+    /// The viewer with this instance refreshed its heartbeat recently.
+    pub fn beating(&self, instance: &str) -> bool {
+        !instance.is_empty()
+            && fs::read(&self.heartbeat)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                .is_some_and(|v| {
+                    v["instance"] == instance
+                        && now().saturating_sub(v["at"].as_u64().unwrap_or(0))
+                            <= HEARTBEAT_STALE_SECS
+                })
     }
 
     pub fn history_path(&self) -> &Path {

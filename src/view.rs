@@ -8,7 +8,9 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+
+const BEAT_EVERY: Duration = Duration::from_secs(2);
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 fn item_line(item: &crate::store::Item) -> String {
@@ -359,7 +361,7 @@ fn visible<'a>(plan: Option<&'a Plan>, ui: &Ui) -> Vec<&'a Item> {
     .unwrap_or_default()
 }
 
-fn handle(ui: &mut Ui, code: KeyCode, ctrl: bool, plan: Option<&Plan>) -> Action {
+fn handle(ui: &mut Ui, code: KeyCode, ctrl: bool, plan: Option<&Plan>, limit: usize) -> Action {
     if ctrl && code == KeyCode::Char('c') {
         return Action::Quit;
     }
@@ -402,7 +404,7 @@ fn handle(ui: &mut Ui, code: KeyCode, ctrl: bool, plan: Option<&Plan>) -> Action
                 ui.selected = current();
             }
             Mode::List => ui.selected = (ui.selected + 1).min(count.saturating_sub(1)),
-            _ => ui.scroll += 1,
+            _ => ui.scroll = (ui.scroll + 1).min(limit.saturating_sub(1)),
         },
         KeyCode::Up | KeyCode::Char('k') => match ui.mode {
             Mode::Bar => {
@@ -650,7 +652,10 @@ fn draw_panel(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, ui: &Ui, hist
     }
 }
 
-pub fn watch(store: &Store) -> Result<()> {
+/// Run the viewer. `instance` is set for a viewer that `ap` opened automatically: it
+/// keeps a heartbeat, exits once the plan stops naming it, and its q dismisses
+/// automatic reopening. A manually started viewer (`ap view`) changes nothing on exit.
+pub fn watch(store: &Store, instance: Option<&str>) -> Result<()> {
     let mut plan = store.load().ok().flatten();
     let mut error: Option<String> = None;
     let mut seen = mtime(store);
@@ -668,30 +673,17 @@ pub fn watch(store: &Store) -> Result<()> {
     let colors = palette(store);
     let mut ui = Ui::default();
     let mut history: Vec<String> = Vec::new();
+    let mut last_beat = Instant::now() - BEAT_EVERY;
     let mut terminal = ratatui::init();
     let result = (|| -> Result<bool> {
         loop {
-            terminal.draw(|f| {
-                if ui.mode == Mode::Bar && !ui.typing {
-                    draw(f, &colors, plan.as_ref(), error.as_deref(), &source)
-                } else {
-                    draw_panel(f, &colors, plan.as_ref(), &ui, &history)
-                }
-            })?;
-            if event::poll(Duration::from_millis(500))? {
-                if let Event::Key(key) = event::read()?
-                    && key.kind == KeyEventKind::Press
-                {
-                    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-                    if let Action::Quit = handle(&mut ui, key.code, ctrl, plan.as_ref()) {
-                        return Ok(true);
-                    }
-                    if ui.mode == Mode::History {
-                        history = history_lines(store);
-                    }
-                }
-                continue;
+            if let Some(id) = instance
+                && last_beat.elapsed() >= BEAT_EVERY
+            {
+                store.beat(id)?;
+                last_beat = Instant::now();
             }
+            // Reload before handling input so a burst of keys never delays updates.
             let current = mtime(store);
             if current != seen {
                 seen = current;
@@ -706,19 +698,52 @@ pub fn watch(store: &Store) -> Result<()> {
                     // Keep the last good plan visible and say it is stale.
                     Err(e) => error = Some(e.to_string()),
                 }
+                // `ap close`, `ap open` or a newer viewer replaced us.
+                if let (Some(id), Some(p)) = (instance, &plan)
+                    && p.viewer.as_ref().is_none_or(|v| v.instance != id)
+                {
+                    return Ok(false);
+                }
+            }
+            terminal.draw(|f| {
+                if ui.mode == Mode::Bar && !ui.typing {
+                    draw(f, &colors, plan.as_ref(), error.as_deref(), &source)
+                } else {
+                    draw_panel(f, &colors, plan.as_ref(), &ui, &history)
+                }
+            })?;
+            if event::poll(Duration::from_millis(500))?
+                && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                let limit = match ui.mode {
+                    Mode::History => history.len(),
+                    Mode::Help => HELP.lines().count(),
+                    _ => 16,
+                };
+                if let Action::Quit = handle(&mut ui, key.code, ctrl, plan.as_ref(), limit) {
+                    return Ok(true);
+                }
+                if ui.mode == Mode::History {
+                    history = history_lines(store);
+                }
             }
         }
     })();
     ratatui::restore();
-    if result? {
-        // The user dismissed the viewer: don't pop it back up on the next update.
-        if let Some(p) = &plan {
-            store.update(&p.key, "", |p| {
-                p.view_suppressed = true;
+    if let Some(id) = instance {
+        store.clear_beat(id);
+    }
+    if result? && let (Some(id), Some(p)) = (instance, &plan) {
+        // The user dismissed this automatic viewer: don't pop it back up.
+        store.update(&p.key, "", |p| {
+            if p.viewer.as_ref().is_some_and(|v| v.instance == id) {
                 p.viewer = None;
-                Ok(())
-            })?;
-        }
+                p.view_suppressed = true;
+            }
+            Ok(())
+        })?;
     }
     Ok(())
 }
@@ -831,7 +856,7 @@ mod tests {
 
     fn press(ui: &mut Ui, plan: &Plan, keys: &[KeyCode]) {
         for k in keys {
-            handle(ui, *k, false, Some(plan));
+            handle(ui, *k, false, Some(plan), 16);
         }
     }
 
@@ -893,7 +918,7 @@ mod tests {
             &[KeyCode::Char('/'), KeyCode::Char('q'), KeyCode::Char('u')],
         );
         assert!(matches!(
-            handle(&mut ui, KeyCode::Enter, false, Some(&plan)),
+            handle(&mut ui, KeyCode::Enter, false, Some(&plan), 16),
             Action::None
         ));
         assert_eq!(ui.query, "qu");
@@ -901,7 +926,7 @@ mod tests {
         assert!(text.contains("4.quickfix"), "{text}");
         assert!(!text.contains("항목1"), "{text}");
         assert!(matches!(
-            handle(&mut ui, KeyCode::Char('q'), false, Some(&plan)),
+            handle(&mut ui, KeyCode::Char('q'), false, Some(&plan), 16),
             Action::Quit
         ));
     }
@@ -919,7 +944,7 @@ mod tests {
         press(&mut ui, &plan, &[KeyCode::Char('?')]);
         assert!(panel(&plan, &ui, 12).contains("미완료만보기"));
         assert!(matches!(
-            handle(&mut ui, KeyCode::Char('c'), true, Some(&plan)),
+            handle(&mut ui, KeyCode::Char('c'), true, Some(&plan), 16),
             Action::Quit
         ));
     }

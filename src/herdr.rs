@@ -41,20 +41,26 @@ pub fn terminal_of(pane: &str) -> Option<String> {
         .map(String::from)
 }
 
+/// This process and its ancestors, from one `ps` snapshot.
 fn ancestors() -> Vec<u32> {
+    let table: std::collections::HashMap<u32, u32> = Command::new("ps")
+        .args(["-A", "-o", "pid=,ppid="])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split_whitespace().map(|n| n.parse::<u32>().ok());
+            Some((it.next()??, it.next()??))
+        })
+        .collect();
     let mut pids = vec![std::process::id()];
-    while pids.len() < 64 {
-        let pid = pids[pids.len() - 1].to_string();
-        let parent = Command::new("ps")
-            .args(["-o", "ppid=", "-p", &pid])
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        match parent {
-            Some(ppid) if ppid > 1 && !pids.contains(&ppid) => pids.push(ppid),
-            _ => break,
+    while let Some(&ppid) = table.get(&pids[pids.len() - 1]) {
+        if ppid <= 1 || pids.contains(&ppid) {
+            break;
         }
+        pids.push(ppid);
     }
     pids
 }
@@ -133,12 +139,6 @@ pub fn codex_pane_for_thread(thread: &str, root: &Path) -> Option<String> {
     found.next().is_none().then_some(pane)
 }
 
-/// The viewer recorded in the plan is the same terminal and still running ap.
-pub fn alive(viewer: &Viewer) -> bool {
-    terminal_of(&viewer.pane).as_deref() == Some(viewer.terminal_id.as_str())
-        && foreground(&viewer.pane).iter().any(|n| n == "ap")
-}
-
 /// An idle shell pane directly below `source` (same column, touching edge).
 pub fn idle_pane_below(source: &str) -> Option<String> {
     let layout = call(&["pane", "layout", "--pane", source]).ok()?;
@@ -165,29 +165,25 @@ pub fn idle_pane_below(source: &str) -> Option<String> {
     idle.then_some(pane)
 }
 
-/// Run the viewer in the user's existing idle shell below; the pane stays theirs.
-pub fn run_in(pane: &str, plan_file: &Path) -> Result<Viewer> {
-    let terminal_id = terminal_of(pane).context("pane의 terminal을 확인할 수 없습니다")?;
-    let exe = std::env::current_exe()?;
-    let command = format!(
-        "{} view --file {}",
-        shell_quote(exe.to_str().context("binary path encoding")?),
-        shell_quote(plan_file.to_str().context("plan path encoding")?)
-    );
-    call(&["pane", "run", pane, &command])?;
+/// Run the viewer in the user's existing idle shell below; it exits back to their shell.
+pub fn run_in(pane: &str, command: &str, instance: &str) -> Result<Viewer> {
+    call(&["pane", "run", pane, command])?;
     Ok(Viewer {
+        instance: instance.into(),
         pane: pane.into(),
-        terminal_id,
         reused: true,
     })
 }
 
-pub fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
-
-/// Split a pane below `source` without taking focus and run the viewer in it.
-pub fn open_below(source: &str, cwd: &Path, plan_file: &Path, size_percent: u8) -> Result<Viewer> {
+/// Split a pane below `source` without taking focus and run the viewer in it. The
+/// viewer is exec'd, so the pane disappears when it exits.
+pub fn open_below(
+    source: &str,
+    cwd: &Path,
+    command: &str,
+    instance: &str,
+    size_percent: u8,
+) -> Result<Viewer> {
     let ratio = format!("{:.2}", 1.0 - f64::from(size_percent.clamp(10, 50)) / 100.0);
     let cwd = cwd.to_str().context("cwd encoding")?;
     let split = call(&[
@@ -208,33 +204,11 @@ pub fn open_below(source: &str, cwd: &Path, plan_file: &Path, size_percent: u8) 
         .and_then(Value::as_str)
         .context("herdr가 새 pane ID를 반환하지 않았습니다")?
         .to_string();
-    let terminal_id = terminal_of(&pane).context("새 pane의 terminal을 확인할 수 없습니다")?;
-    // Run this exact binary; a bare `ap` could resolve to another installed version.
-    let exe = std::env::current_exe()?;
-    let command = format!(
-        "exec {} view --file {}",
-        shell_quote(exe.to_str().context("binary path encoding")?),
-        shell_quote(plan_file.to_str().context("plan path encoding")?)
-    );
-    call(&["pane", "run", &pane, &command])
+    call(&["pane", "run", &pane, &format!("exec {command}")])
         .with_context(|| format!("{pane} 생성 후 viewer 실행 실패; pane은 남아 있습니다"))?;
     Ok(Viewer {
+        instance: instance.into(),
         pane,
-        terminal_id,
         reused: false,
     })
-}
-
-/// Close only the exact viewer terminal we created.
-pub fn close(viewer: &Viewer) -> Result<bool> {
-    if !alive(viewer) {
-        return Ok(false);
-    }
-    if viewer.reused {
-        // Quit the viewer and hand the shell back; the pane belongs to the user.
-        call(&["pane", "send-keys", &viewer.pane, "q"])?;
-    } else {
-        call(&["pane", "close", &viewer.pane])?;
-    }
-    Ok(true)
 }

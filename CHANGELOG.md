@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0-beta.2 — 2026-10-06 (prerelease)
+
+Fixes from code review:
+- Each automatic viewer has its own instance and heartbeat. Liveness no longer
+  depends on pane IDs, and `ap close` asks the viewer to exit through the plan
+  instead of `tmux kill-pane` or sending `q`. A reused tmux pane ID can no
+  longer close an unrelated pane, and closing works while the viewer is typing
+  a search.
+- Quitting a manually started `ap view` no longer clears the automatic viewer.
+- A reused pane ID (new terminal) gets a fresh viewer state; `ap new` keeps a
+  running viewer and the user's dismissal.
+- Archives never overwrite each other and take their history with them.
+- Leaving Done clears the completion time; blank block reasons are rejected.
+- Pane verification uses one `ps` snapshot; `view --file` skips pane lookup;
+  file updates are not delayed by key input; detail/history scrolling is bounded.
+
 ## 3.0.0-beta.1 — 2026-10-06 (prerelease)
 
 - Same features as 3.0.0-alpha.2, promoted to beta for wider daily use.

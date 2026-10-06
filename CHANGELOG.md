@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.0-beta.1 — 2026-10-06 (prerelease)
+
+- Same features as 3.0.0-alpha.2, promoted to beta for wider daily use.
+
 ## 3.0.0-alpha.2 — 2026-10-06 (prerelease)
 
 - Restore the interactive views on request: ↑↓/j k list, Enter detail, `/`

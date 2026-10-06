@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.0.0-alpha.1 — 2026-10-06 (prerelease)
+
+- Replace native hooks, launchers, session observation and the v2 work-record
+  protocol with one small CLI: `goal`, `add`, `start`, `done`, `block`,
+  `cancel`, `todo`, `rm`, `new`, `status`, `history`, `view`, `open`, `close`.
+  The agent passes no IDs or revisions; item numbers never change.
+- Plans are keyed by `--plan`/`AP_PLAN`, a verified Herdr pane, a tmux pane or
+  the Codex thread. `HERDR_PANE_ID` is trusted only when that pane's process is
+  an ancestor of `ap`. Codex (shared daemon) is matched to the single Codex
+  pane titled with its thread name; ambiguous cases open nothing.
+- The progress pane reuses an idle shell directly below, otherwise splits once.
+  `q`, `ap close` or closing the pane in Herdr stops automatic reopening; a
+  reused shell is handed back instead of closed.
+- Signal layout with the brighter tuned colors and a soft gradient at the
+  progress edge. Project `.agent-progress/ui.json` themes are still read.
+- Four skills are merged into one `ap` skill. Per-project pane size moved to
+  `AP_PANE_SIZE` (default 10%); detail/search/history views were not carried over.
+
 ## 1.2.8 — 2026-10-01
 
 - Preserve the height of an already-open Herdr progress pane when native hooks

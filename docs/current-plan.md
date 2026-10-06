@@ -1,5 +1,31 @@
 # Current release plan
 
+## Minimal CLI redesign — 2026-10-06
+
+User decision (2026-10-06): the v2 work-record protocol and the 1.x native
+hook/launcher observation are over-engineered. Replace them with one small CLI
+the agent calls directly. Branch `feat/minimal-cli`, uncommitted.
+
+- [x] [AP-05/minimal] Stable-numbered items, pane-keyed plans, locked atomic store, history JSONL.
+- [x] [AP-06/minimal] Herdr/tmux auto-open once, reuse, `q`/`ap close` remove the pane, `ap open` reopens.
+- [ ] [AP-19/minimal] Packaging scripts, Homebrew formula and CI still target 1.2.8 and must be reworked before release.
+- [ ] [AP-24/minimal] User acceptance of the new CLI; then update the repo AGENTS.md v2 block and installed skills.
+
+Codex finding (live, Codex 0.160.1): commands run under the shared
+app-server daemon, whose HERDR_PANE_ID belongs to the pane that started it,
+and Herdr's own Codex session mapping pointed at that same wrong pane. ap now
+trusts HERDR_PANE_ID only when that pane's foreground process is an ancestor;
+Codex plans are keyed by CODEX_THREAD_ID and do not auto-open a pane.
+Resolution without changing how Codex runs (live, Codex 0.160 daemon mode):
+CODEX_THREAD_ID → thread_name from session_index.jsonl → the unique Herdr
+pane running Codex titled "<thread_name> | …" inside the project. The viewer
+opened directly below that Codex pane; ambiguous or unnamed threads open nothing.
+
+Evidence: 11 CLI integration tests and 3 render tests, fmt and Clippy pass; one live Herdr run
+opened, refreshed, closed, suppressed, reopened and q-exited the viewer with
+no leftover pane. No AP acceptance item is certified by this stage. The v2.0.2
+source was not found on disk; the installed 2.0.2 binary was left untouched.
+
 ## Repeated pane growth hotfix — 2026-10-01
 
 - [x] [AP-06/pane-growth] Reproduce a manually shrunk Herdr observer growing after an automatic reopen, and preserve its live height on ordinary reuse.

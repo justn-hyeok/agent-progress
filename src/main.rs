@@ -1,917 +1,370 @@
-use agent_progress::{
-    dashboard, herdr,
-    model::{self, Evidence, Plan, Session, Status, Task, Verification},
-    store, ui,
-};
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
-use std::{
-    io::{self, IsTerminal, Write},
-    path::PathBuf,
-    process::ExitCode,
-};
-use uuid::Uuid;
+mod herdr;
+mod store;
+mod tmux;
+mod view;
 
+use anyhow::{Context, Result, bail};
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use store::{Plan, State, Store, Viewer};
+
+/// 에이전트 작업 계획을 기록하고 별도 창에 보여줍니다. 체크율은 완료 보고 비율이며 제품 완성도가 아닙니다.
 #[derive(Parser)]
-#[command(
-    version,
-    about = "공유 작업 계획 CLI/HUD · 체크율은 제품 완성도가 아닙니다"
-)]
+#[command(name = "ap", version)]
 struct Cli {
-    /// 계획 파일을 명시적으로 선택합니다. 최신 파일을 자동 선택하지 않습니다.
-    #[arg(long, short, global = true)]
-    file: Option<PathBuf>,
-    /// 기록 주체의 이름. 본인 인증을 의미하지 않습니다.
-    #[arg(long, global = true, default_value = "local")]
-    actor: String,
-    /// 읽었던 revision과 다르면 쓰기를 거부합니다.
+    /// 계획 이름. 기본값은 AP_PLAN, Herdr/tmux pane, 그 외에는 프로젝트 기본 계획입니다
     #[arg(long, global = true)]
-    expect_revision: Option<u64>,
+    plan: Option<String>,
+    /// 이번 명령에서 진행 창을 자동으로 열지 않습니다 (AP_AUTO_OPEN=0과 같음)
+    #[arg(long, global = true)]
+    no_view: bool,
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
-enum Command {
-    /// Check native connection interfaces; --live also makes one authenticated plan-only request per agent.
-    Compatibility {
-        #[arg(long, value_parser=["codex","claude","opencode"])]
-        agent: Vec<String>,
-        #[arg(long)]
-        live: bool,
-        /// Explicit native model for one selected agent; uses that agent's existing authentication.
-        #[arg(long, requires = "live")]
-        model: Option<String>,
-    },
-    /// Optional shell integration for typing codex directly; backs up and preserves rc content.
-    Shell {
-        #[arg(value_parser=["preview","status","install","remove"],default_value="preview")]
-        action: String,
-        #[arg(long)]
-        rc: Option<PathBuf>,
-        #[arg(long, value_parser=["zsh","bash","fish"], default_value="zsh")]
-        shell: String,
-    },
-    /// Project-local pane size, colors, placement and automatic observation.
-    Config {
-        #[command(subcommand)]
-        action: PresentationAction,
-    },
-    /// First project-local setup for the progress-pane height.
-    Setup,
-    /// Start an existing native CLI; observe Codex's frontend connection without disabling its shared server.
-    Launch {
-        #[arg(long,value_parser=["codex","claude","opencode"],default_value="codex")]
-        agent: String,
-        #[arg(last = true)]
-        args: Vec<String>,
-    },
-    #[command(hide = true)]
-    TerminalSource {
-        #[arg(long)]
-        slot: PathBuf,
-    },
-    #[command(hide = true)]
-    TerminalFollow {
-        #[arg(long)]
-        slot: PathBuf,
-        #[arg(long)]
-        once: bool,
-    },
-    #[command(hide = true)]
-    CodexClient {
-        #[arg(long)]
-        socket: PathBuf,
-        #[arg(long)]
-        backend: PathBuf,
-        #[arg(long)]
-        pane: String,
-        #[arg(long)]
-        owner: u32,
-        #[arg(long)]
-        root: PathBuf,
-    },
-    /// Native hook adapter. Reads a bounded JSON event on stdin; never injects model context.
-    Bridge {
-        #[arg(long,value_parser=["codex","claude","opencode"])]
-        agent: String,
-        #[arg(long)]
-        root: Option<PathBuf>,
-    },
-    /// Passive project-local hooks; optional product MCP when ap.project.json exists. Preview reports management state.
-    Connect {
-        #[arg(value_parser=["preview","apply","remove"],default_value="preview")]
-        action: String,
-        #[arg(long)]
-        allow_writes: bool,
-        #[arg(long,value_parser=["codex","claude","opencode"],default_value="codex")]
-        agent: String,
-    },
-    /// Import a portable product bundle into an explicitly named new directory.
-    Import {
-        #[arg(long)]
-        input: PathBuf,
-        #[arg(long)]
-        into: PathBuf,
-    },
-    /// Browse explicitly selected saved products; does not reconnect live agents.
-    Projects {
-        #[arg(long,required=true,num_args=1..)]
-        project: Vec<PathBuf>,
-    },
-    /// Read-only diagnostics; never selects another source or changes settings.
-    Doctor {
-        #[arg(long)]
-        project: Option<PathBuf>,
-        #[arg(long, conflicts_with = "rollout")]
-        pane: Option<String>,
-        #[arg(long)]
-        rollout: Option<PathBuf>,
-        /// Check the selected agent as required; other installed harnesses are optional.
-        #[arg(long,value_parser=["codex","claude","opencode"])]
-        agent: Option<String>,
-        #[arg(long,value_parser=["zsh","bash","fish"])]
-        shell: Option<String>,
-        /// Read-only check of one shell file instead of default user setup.
-        #[arg(long)]
-        rc: Option<PathBuf>,
-        /// Inspect this exact owned terminal slot; never select a newest launch.
-        #[arg(long)]
-        terminal_slot: Option<PathBuf>,
-        /// Exit nonzero for unhealthy requested checks. Default remains report-only.
-        #[arg(long)]
-        strict: bool,
-    },
-    /// Local stdio MCP. Read-only unless writes are explicitly enabled.
-    Mcp {
-        #[arg(long)]
-        project: Option<PathBuf>,
-        #[arg(long)]
-        allow_writes: bool,
-    },
-    /// 제품 전체 계획 조회·명시적 상태/근거 갱신. 항목 등록은 원본 계획에서 자동으로 합니다.
-    Product {
-        #[arg(long)]
-        project: Option<PathBuf>,
-        #[command(subcommand)]
-        action: ProductAction,
-    },
-    /// 기존 에이전트 세션을 별도 진행 상황 창에서 자동으로 따라갑니다.
-    Follow {
-        #[arg(long, conflicts_with = "rollout")]
-        pane: Option<String>,
-        #[arg(long)]
-        session: Option<Uuid>,
-        #[arg(long)]
-        rollout: Option<PathBuf>,
-        #[arg(long)]
-        codex_home: Option<PathBuf>,
-        #[arg(long)]
-        cache: Option<PathBuf>,
-        #[arg(long)]
-        project: Option<PathBuf>,
-        #[arg(long)]
-        once: bool,
-    },
-    /// 현재 에이전트 pane 아래에 진행 상황 창을 엽니다.
-    Open {
-        #[arg(long)]
-        pane: Option<String>,
-        #[arg(long)]
-        reconnect: bool,
-        #[arg(long, value_enum)]
-        position: Option<agent_progress::settings::Position>,
-    },
-    Init {
-        #[arg(long)]
-        project: String,
-        #[arg(long)]
-        goal: String,
-    },
+enum Cmd {
+    /// 목표를 설정합니다
+    Goal { text: String },
+    /// 항목을 추가합니다. 번호는 한 번 정해지면 바뀌지 않습니다
     Add {
-        title: String,
-        #[arg(long, required = true)]
-        criterion: Vec<String>,
-        #[arg(long, value_enum, default_value = "reported")]
-        require: Verification,
-        #[arg(long)]
-        depends_on: Vec<Uuid>,
-        #[arg(long)]
-        reason: String,
+        #[arg(required = true)]
+        titles: Vec<String>,
     },
+    /// 항목을 진행 중으로 표시합니다 (번호 또는 정확한 제목)
+    Start { item: String },
+    /// 항목을 완료로 표시합니다
+    Done {
+        #[arg(required = true)]
+        items: Vec<String>,
+    },
+    /// 항목을 막힘으로 표시합니다
+    Block {
+        item: String,
+        reason: String,
+        /// 누가 풀어야 하는지 (예: user, external)
+        #[arg(long)]
+        needs: Option<String>,
+    },
+    /// 항목을 취소합니다. 진행률 분모에서 빠집니다
+    Cancel {
+        item: String,
+        reason: Option<String>,
+    },
+    /// 항목을 다시 예정으로 되돌립니다
+    Todo { item: String },
+    /// 잘못 추가한 항목을 지웁니다. 다른 항목 번호는 바뀌지 않습니다
+    Rm { item: String },
+    /// 현재 계획을 보관하고 새로 시작합니다
+    New,
+    /// 현재 계획을 출력합니다
     Status {
-        id: Uuid,
-        #[arg(value_enum)]
-        status: Status,
-        #[arg(long)]
-        reason: String,
-        #[arg(long)]
-        next: Option<String>,
-    },
-    /// Record agent-reported status using the same evidence policy as live projection.
-    Report {
-        id: Uuid,
-        #[arg(value_enum)]
-        status: Status,
-        #[arg(long)]
-        reason: String,
-        #[arg(long)]
-        next: Option<String>,
-    },
-    Evidence {
-        id: Uuid,
-        #[arg(value_enum)]
-        kind: Verification,
-        reference: String,
-    },
-    /// 근거를 오래됨으로 표시하고 완료 작업을 검증 대기로 되돌립니다.
-    Invalidate {
-        id: Uuid,
-        #[arg(long)]
-        reason: String,
-    },
-    Bind {
-        id: Uuid,
-        #[arg(long)]
-        agent: String,
-        #[arg(long)]
-        session: String,
-    },
-    Note {
-        id: Uuid,
-        text: String,
-        #[arg(long)]
-        next: Option<String>,
-    },
-    Show {
         #[arg(long)]
         json: bool,
     },
-    Validate,
+    /// 변경 이력을 출력합니다
     History,
-    /// 읽기 전용 HUD. q 또는 Ctrl-C로 종료합니다.
-    Watch,
+    /// 진행 창을 현재 터미널에서 실행합니다
+    View {
+        /// 계획 파일을 직접 지정합니다
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// 한 번만 출력하고 종료합니다
+        #[arg(long)]
+        once: bool,
+    },
+    /// 현재 pane 아래에 진행 창을 엽니다 (자동 열기 억제 해제)
+    Open,
+    /// 이 계획의 진행 창을 닫고 자동 열기를 멈춥니다
+    Close,
 }
 
-#[derive(Subcommand)]
-enum ProductAction {
-    Show,
-    /// Plain text recovery summary, suitable for terminal text readers.
-    Summary,
-    Revision {
-        key: String,
-    },
-    Resume,
-    Backup {
-        #[arg(long)]
-        output: PathBuf,
-    },
-    Export {
-        #[arg(long)]
-        output: PathBuf,
-    },
-    Restore {
-        #[arg(long)]
-        backup: PathBuf,
-        #[arg(long)]
-        expect_hash: Option<String>,
-    },
-    Status {
-        key: String,
-        #[arg(value_enum)]
-        status: Status,
-        #[arg(long)]
-        reason: String,
-    },
-    Evidence {
-        key: String,
-        #[arg(value_enum)]
-        kind: Verification,
-        reference: String,
-        #[arg(long)]
-        revision: Option<String>,
-    },
-    Invalidate {
-        key: String,
-        #[arg(long)]
-        reason: String,
-    },
-    Note {
-        key: String,
-        text: String,
-        #[arg(long)]
-        next: Option<String>,
-    },
-    /// Declare split/merge between existing stable IDs; never inherit completion.
-    Replace {
-        #[arg(long, required = true, num_args = 1..)]
-        from: Vec<String>,
-        #[arg(long, required = true, num_args = 1..)]
-        into: Vec<String>,
-        #[arg(long)]
-        reason: String,
-    },
+#[derive(Clone, Copy)]
+enum Host {
+    Herdr,
+    Tmux,
+    None,
 }
 
-#[derive(Subcommand)]
-enum PresentationAction {
-    Show,
-    Reset,
-    /// Choose the progress-pane height on first use without changing other settings.
-    Setup,
-    /// Create ui.yaml from current settings without replacing an existing YAML file.
-    InitYaml,
-    /// List built-in and user-defined palette names.
-    Presets,
-    Set(Box<PresentationOptions>),
+struct Ctx {
+    key: String,
+    store: Store,
+    root: PathBuf,
+    host: Host,
+    source_pane: Option<String>,
+    /// Terminal identity that must match the stored plan for pane-keyed plans.
+    terminal: Option<String>,
 }
 
-#[derive(clap::Args)]
-struct PresentationOptions {
-    /// Progress-pane height as a percentage of its vertical split (10–50).
-    #[arg(long)]
-    pane_size: Option<u8>,
-    #[arg(long)]
-    preset: Option<String>,
-    #[arg(long)]
-    brightness: Option<f64>,
-    #[arg(long, value_enum)]
-    position: Option<agent_progress::settings::Position>,
-    #[arg(long)]
-    auto_open: Option<bool>,
-    #[arg(long)]
-    track: Option<String>,
-    #[arg(long)]
-    fill: Option<String>,
-    #[arg(long)]
-    accent: Option<String>,
-    #[arg(long)]
-    text: Option<String>,
-    #[arg(long)]
-    muted: Option<String>,
-    #[arg(long)]
-    metadata: Option<String>,
-    #[arg(long)]
-    warning: Option<String>,
-}
-
-fn prompt_pane_size(current: u8) -> Result<u8> {
-    anyhow::ensure!(
-        io::stdin().is_terminal() && io::stdout().is_terminal(),
-        "interactive terminal required; use ap config set --pane-size PERCENT"
-    );
-    println!("진행 창 높이 · 현재 {current}%");
-    println!("1) 최소 10%   2) 작게 20%   3) 보통 30%   4) 크게 40%");
-    print!("번호 또는 10–50 사이 비율 (Enter: 현재 값): ");
-    io::stdout().flush()?;
-    let mut choice = String::new();
-    anyhow::ensure!(io::stdin().read_line(&mut choice)? > 0, "setup cancelled");
-    agent_progress::settings::parse_pane_size_choice(&choice, current)
-}
-
-fn run(cli: Cli) -> Result<()> {
-    let command = cli.command.unwrap_or(Command::Follow {
-        pane: None,
-        session: None,
-        rollout: None,
-        codex_home: None,
-        cache: None,
-        project: None,
-        once: false,
-    });
-    let command = match command {
-        Command::Setup => Command::Config {
-            action: PresentationAction::Setup,
-        },
-        other => other,
+fn context(plan: Option<String>) -> Result<Ctx> {
+    let cwd = std::env::current_dir()?;
+    let root = store::project_root(&cwd);
+    let codex_thread = std::env::var("CODEX_THREAD_ID")
+        .ok()
+        .filter(|s| !s.is_empty());
+    // HERDR_PANE_ID is inherited, not proven: Codex's shared daemon carries the ID of
+    // whichever pane started it. Trust it only when that pane's process is our ancestor.
+    let herdr_pane = std::env::var("HERDR_PANE_ID")
+        .ok()
+        .filter(|p| herdr::inside() && herdr::is_ancestor_pane(p));
+    // Codex's daemon hides the pane; find the one Codex pane titled with this thread's name.
+    let codex_pane = match (&herdr_pane, &codex_thread) {
+        (None, Some(thread)) if herdr::inside() => herdr::codex_pane_for_thread(thread, &root),
+        _ => None,
     };
-    let command = match command {
-        Command::Compatibility { agent, live, model } => {
-            let agents = if agent.is_empty() {
-                vec!["codex".into(), "claude".into(), "opencode".into()]
-            } else {
-                agent
-            };
-            anyhow::ensure!(
-                model.is_none() || agents.len() == 1,
-                "--model requires one --agent"
-            );
-            let report =
-                agent_progress::compatibility::report_model(&agents, live, model.as_deref());
-            println!("{}", serde_json::to_string_pretty(&report)?);
-            anyhow::ensure!(
-                report["passed"] == true,
-                "native compatibility check failed"
-            );
-            return Ok(());
-        }
-        Command::Shell { action, rc, shell } => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&agent_progress::shell::manage_selected(
-                    &action,
-                    &shell,
-                    rc.as_deref()
-                )?)?
-            );
-            return Ok(());
-        }
-        Command::Config { action } => {
-            let cwd = std::env::current_dir()?;
-            let project = agent_progress::project::Project::discover(&cwd)?;
-            let root = project.as_ref().map(|p| p.root()).unwrap_or(&cwd);
-            let mut settings = if matches!(&action, PresentationAction::Reset) {
-                Default::default()
-            } else {
-                agent_progress::settings::load(root)?
-            };
-            let mut changed = true;
-            let mut layout_changed = false;
-            match action {
-                PresentationAction::Show => changed = false,
-                PresentationAction::Setup => {
-                    settings.pane_size_percent = prompt_pane_size(settings.pane_size_percent)?;
-                    layout_changed = true;
-                }
-                PresentationAction::InitYaml => {
-                    agent_progress::settings::init_yaml(root)?;
-                    println!("{}", agent_progress::settings::yaml_path(root).display());
-                    return Ok(());
-                }
-                PresentationAction::Presets => {
-                    println!(
-                        "{}",
-                        serde_json::json!({"built_in":["signal","forest","ocean","amber"],"custom":settings.presets.keys().collect::<Vec<_>>()})
-                    );
-                    return Ok(());
-                }
-                PresentationAction::Reset => {
-                    settings = Default::default();
-                    layout_changed = true;
-                }
-                PresentationAction::Set(options) => {
-                    let PresentationOptions {
-                        pane_size,
-                        preset,
-                        brightness,
-                        position,
-                        auto_open,
-                        track,
-                        fill,
-                        accent,
-                        text,
-                        muted,
-                        metadata,
-                        warning,
-                    } = *options;
-                    if let Some(value) = pane_size {
-                        settings.pane_size_percent = value;
-                        layout_changed = true;
-                    }
-                    if let Some(preset) = preset {
-                        settings.preset = preset;
-                        settings.theme = Default::default();
-                    }
-                    if let Some(value) = brightness {
-                        settings.background_brightness = value;
-                    }
-                    if let Some(value) = position {
-                        settings.position = value;
-                        layout_changed = true;
-                    }
-                    if let Some(value) = auto_open {
-                        settings.auto_open = value;
-                    }
-                    for (target, value) in [
-                        (&mut settings.theme.track, track),
-                        (&mut settings.theme.fill, fill),
-                        (&mut settings.theme.accent, accent),
-                        (&mut settings.theme.text, text),
-                        (&mut settings.theme.muted, muted),
-                        (&mut settings.theme.metadata, metadata),
-                        (&mut settings.theme.warning, warning),
-                    ] {
-                        if let Some(value) = value {
-                            agent_progress::settings::color(&value)?;
-                            *target = Some(value.to_ascii_uppercase());
-                        }
-                    }
-                }
-            }
-            if changed {
-                agent_progress::settings::save(root, &settings)?;
-                if layout_changed {
-                    herdr::refresh_existing_for_root(root)
-                        .context("preference saved, but live Herdr layout update failed")?;
-                    agent_progress::terminal::refresh_existing_for_root(root, &settings)
-                        .context("preference saved, but live tmux layout update failed")?;
-                }
-            }
-            println!("{}", serde_json::to_string_pretty(&settings)?);
-            return Ok(());
-        }
-        Command::Launch { agent, args } => {
-            use std::io::IsTerminal;
-            use std::os::unix::process::CommandExt;
-            agent_progress::terminal::claim()?;
-            if agent_progress::terminal::interactive_args(&agent, &args)
-                && (std::env::var("HERDR_ENV").as_deref() == Ok("1")
-                    || std::env::var_os("AP_TERMINAL_SLOT").is_some()
-                    || std::io::stdin().is_terminal())
-            {
-                agent_progress::compatibility::on_launch(&agent);
-            }
-            if agent_progress::terminal::maybe_launch(&agent, &args)? {
-                return Ok(());
-            }
-            if agent == "codex" {
-                return agent_progress::codex_client::launch(args);
-            }
-            let mut command = std::process::Command::new(&agent);
-            if std::env::var_os("AP_AUTO_OPEN").is_none() {
-                command.env("AP_AUTO_OPEN", "1");
-            }
-            command.args(args);
-            return Err(command.exec().into());
-        }
-        Command::TerminalSource { slot } => return agent_progress::terminal::source(&slot),
-        Command::TerminalFollow { slot, once } => {
-            return agent_progress::terminal::follow(&slot, once);
-        }
-        Command::CodexClient {
-            socket,
-            backend,
-            pane,
-            owner,
-            root,
-        } => {
-            agent_progress::codex_client::serve(&socket, &backend, &pane, owner, &root)?;
-            return Ok(());
-        }
-        Command::Bridge { agent, root } => {
-            let event = agent_progress::bridge::read_input(std::io::stdin().lock())?;
-            let registered = agent_progress::bridge::ingest(&agent, &event, root.as_deref())?;
-            let source_root = event["cwd"]
-                .as_str()
-                .map(PathBuf::from)
-                .context("hook cwd missing")?;
-            let project = agent_progress::project::Project::discover(&source_root)?;
-            let settings = agent_progress::settings::load(
-                project.as_ref().map(|p| p.root()).unwrap_or(&source_root),
-            )
-            .unwrap_or_else(|_| {
-                eprintln!("progress presentation unavailable: invalid settings; hook continues");
-                agent_progress::settings::Settings {
-                    auto_open: false,
-                    ..Default::default()
-                }
-            });
-            if settings.auto_open
-                && std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0")
-                && registered["registered_pane"] == true
-                && registered["has_progress"] == true
-            {
-                // Launcher opt-in: open only a read-only observer after exact source ownership was proved.
-                // Diagnostics stay local; observing must never block or steer an agent turn.
-                if let Err(error) = herdr::open_quiet(std::env::var("HERDR_PANE_ID").ok(), true) {
-                    eprintln!("progress window unavailable: {error}");
-                }
-            }
-            println!(
-                "{}",
-                serde_json::json!({"continue":true,"suppressOutput":true})
-            );
-            return Ok(());
-        }
-        Command::Connect {
-            action,
-            allow_writes,
-            agent,
-        } => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&agent_progress::connection::manage_agent(
-                    &std::env::current_dir()?,
-                    &action,
-                    allow_writes,
-                    &agent
-                )?)?
-            );
-            return Ok(());
-        }
-        Command::Import { input, into } => {
-            let p = agent_progress::project::Project::import_bundle(&input, &into)?;
-            println!("{}", serde_json::to_string_pretty(&p.resume()?)?);
-            return Ok(());
-        }
-        Command::Projects { project } => return dashboard::watch_projects(project),
-        Command::Doctor {
-            project,
-            pane,
-            rollout,
-            agent,
-            shell,
-            rc,
-            terminal_slot,
-            strict,
-        } => {
-            let report = agent_progress::doctor::inspect_options(agent_progress::doctor::Options {
-                project,
-                pane,
-                rollout,
-                agent,
-                shell,
-                rc,
-                terminal_slot,
-            });
-            println!("{}", serde_json::to_string_pretty(&report)?);
-            anyhow::ensure!(
-                !strict || report["healthy"] == true,
-                "doctor found unhealthy requested checks"
-            );
-            return Ok(());
-        }
-        Command::Mcp {
-            project,
-            allow_writes,
-        } => {
-            let p = if let Some(path) = project {
-                agent_progress::project::Project::open(&path)?
-            } else {
-                agent_progress::project::Project::discover(&std::env::current_dir()?)?
-                    .context("no ap.project.json")?
-            };
-            return agent_progress::mcp::serve(
-                p,
-                allow_writes,
-                std::io::stdin().lock(),
-                std::io::stdout().lock(),
-            );
-        }
-        Command::Product { project, action } => {
-            anyhow::ensure!(
-                cli.file.is_none() && cli.expect_revision.is_none(),
-                "--file/--expect-revision are file-mode options; use --project for product commands"
-            );
-            let p = if let Some(path) = project {
-                agent_progress::project::Project::open(&path)?
-            } else {
-                agent_progress::project::Project::discover(&std::env::current_dir()?)?
-                    .context("no ap.project.json")?
-            };
-            let plan = match action {
-                ProductAction::Revision { key } => {
-                    println!(
-                        "{}",
-                        serde_json::json!({"key":key,"code_revision":p.code_revision(&key)?})
-                    );
-                    return Ok(());
-                }
-                ProductAction::Summary => {
-                    let summary = p.resume()?;
-                    println!("목표: {}", summary["goal"].as_str().unwrap_or("미정"));
-                    let counts = &summary["counts"];
-                    println!(
-                        "체크 항목: {} / {} 완료 (제품 완성도나 남은 시간이 아님)",
-                        counts[0], counts[1]
-                    );
-                    if let Some(last) = summary["last_completed"]["title"].as_str() {
-                        println!("마지막 완료: {last}");
-                    }
-                    if let Some(blocked) = summary["blocked"].as_array() {
-                        for task in blocked {
-                            println!(
-                                "막힘: {} — {}. 필요한 행동: {}",
-                                task["title"].as_str().unwrap_or(""),
-                                task["blocker"].as_str().unwrap_or(""),
-                                task["next_action"].as_str().unwrap_or("")
-                            );
-                        }
-                    }
-                    if let Some(next) = summary["next"]["title"].as_str() {
-                        println!("다음 작업: {next}");
-                    }
-                    println!("저장 위치: {}", p.state_path().display());
-                    return Ok(());
-                }
-                ProductAction::Resume => {
-                    println!("{}", serde_json::to_string_pretty(&p.resume()?)?);
-                    return Ok(());
-                }
-                ProductAction::Backup { output } => {
-                    p.backup(&output)?;
-                    println!("{}", output.display());
-                    return Ok(());
-                }
-                ProductAction::Export { output } => {
-                    p.export(&output)?;
-                    println!("{}", output.display());
-                    return Ok(());
-                }
-                ProductAction::Restore {
-                    backup,
-                    expect_hash,
-                } => {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&p.restore(
-                            &backup,
-                            expect_hash.as_deref(),
-                            &cli.actor
-                        )?)?
-                    );
-                    return Ok(());
-                }
-                ProductAction::Show => p.plan()?,
-                ProductAction::Status {
-                    key,
-                    status,
-                    reason,
-                } => p.status(&key, status, &cli.actor, &reason)?,
-                ProductAction::Evidence {
-                    key,
-                    kind,
-                    reference,
-                    revision,
-                } => p.evidence_at(&key, kind, &cli.actor, &reference, revision.as_deref())?,
-                ProductAction::Invalidate { key, reason } => {
-                    p.invalidate(&key, &cli.actor, &reason)?
-                }
-                ProductAction::Note { key, text, next } => p.note(&key, &cli.actor, &text, next)?,
-                ProductAction::Replace { from, into, reason } => {
-                    p.replace(&from, &into, &cli.actor, &reason)?
-                }
-            };
-            println!("{}", serde_json::to_string_pretty(&plan)?);
-            return Ok(());
-        }
-        Command::Open {
-            pane,
-            reconnect,
-            position,
-        } => return herdr::open_position(pane, reconnect, position),
-        Command::Follow {
-            pane,
-            session,
-            rollout,
-            codex_home,
-            cache,
-            project,
-            once,
-        } => {
-            return dashboard::follow(dashboard::Options {
-                pane,
-                session,
-                rollout,
-                home: codex_home,
-                once,
-                cache,
-                project,
-            });
-        }
-        command => command,
+    let tmux_pane = std::env::var("TMUX_PANE").ok().filter(|p| !p.is_empty());
+    let (host, source_pane) = match (herdr_pane.or(codex_pane.clone()), tmux_pane) {
+        (Some(p), _) => (Host::Herdr, Some(p)),
+        (None, Some(p)) if codex_thread.is_none() => (Host::Tmux, Some(p)),
+        _ => (Host::None, None),
     };
-    let file = cli
-        .file
-        .as_deref()
-        .context("--file is required; select a plan explicitly")?;
-    let actor = &cli.actor;
-    match command {
-        Command::Init { project, goal } => {
-            let plan = Plan::new(project, goal, actor)?;
-            store::create(file, &plan)?;
-            println!("{} revision={}", plan.id, plan.revision);
+    let explicit = plan.or_else(|| std::env::var("AP_PLAN").ok().filter(|s| !s.is_empty()));
+    let (key, terminal) = match (&explicit, &codex_thread, host, &source_pane) {
+        (Some(name), ..) => (name.clone(), None),
+        (None, Some(thread), _, _) if codex_pane.is_some() => (format!("codex-{thread}"), None),
+        (None, _, Host::Herdr, Some(p)) => (format!("herdr-{p}"), herdr::terminal_of(p)),
+        (None, _, Host::Tmux, Some(p)) => (format!("tmux-{p}"), None),
+        (None, Some(thread), ..) => (format!("codex-{thread}"), None),
+        _ => ("default".into(), None),
+    };
+    if source_pane.is_none() && herdr::inside() {
+        eprintln!(
+            "ap: 이 명령이 실행된 Herdr pane을 확인할 수 없어 진행 창을 자동으로 열지 않습니다. Codex라면 스레드 이름이 정해진 뒤(첫 응답 후) 다시 시도됩니다. 지금 계획은 다른 pane에서 `ap --plan {key} view`로 볼 수 있습니다"
+        );
+    }
+    Ok(Ctx {
+        store: Store::new(&root, &key),
+        key,
+        root,
+        host,
+        source_pane,
+        terminal,
+    })
+}
+
+impl Ctx {
+    /// Mutate the plan. A pane ID now backed by another terminal starts a fresh plan.
+    fn update<T>(&self, event: &str, f: impl FnOnce(&mut Plan) -> Result<T>) -> Result<(Plan, T)> {
+        if let (Some(term), Some(existing)) = (&self.terminal, self.store.load()?)
+            && existing.terminal_id.as_ref().is_some_and(|t| t != term)
+        {
+            // The viewer watches the same path, so it carries over to the fresh plan.
+            self.store.archive()?;
+            self.store
+                .update(&self.key, "new (pane reused by another terminal)", |p| {
+                    p.viewer = existing.viewer.clone();
+                    p.view_suppressed = existing.view_suppressed;
+                    Ok(())
+                })?;
         }
-        Command::Show { json } => {
-            let plan = store::read(file)?;
+        let terminal = self.terminal.clone();
+        self.store.update(&self.key, event, |p| {
+            if p.terminal_id.is_none() {
+                p.terminal_id = terminal;
+            }
+            f(p)
+        })
+    }
+
+    fn viewer_alive(&self, v: &Viewer) -> bool {
+        match self.host {
+            Host::Herdr => herdr::alive(v),
+            Host::Tmux => tmux::alive(v),
+            Host::None => false,
+        }
+    }
+
+    /// Open the viewer under the caller pane unless one is already running or the user dismissed it.
+    fn ensure_view(&self, plan: &Plan, force: bool) -> Result<Option<String>> {
+        let Some(source) = &self.source_pane else {
+            if force {
+                bail!("Herdr/tmux pane 밖입니다. 다른 터미널에서 `ap view`를 실행하세요");
+            }
+            return Ok(None);
+        };
+        if !force && (plan.view_suppressed || std::env::var("AP_AUTO_OPEN").as_deref() == Ok("0")) {
+            return Ok(None);
+        }
+        if let Some(viewer) = &plan.viewer {
+            // q and `ap close` clear the record, so a recorded but dead viewer was closed
+            // from outside (e.g. Herdr's own close). Respect that like q.
+            if self.viewer_alive(viewer) || !force {
+                return Ok(None);
+            }
+        }
+        let size: u8 = std::env::var("AP_PANE_SIZE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+        let viewer = match self.host {
+            Host::Herdr => match herdr::idle_pane_below(source) {
+                Some(pane) => herdr::run_in(&pane, &self.store.path)?,
+                None => herdr::open_below(source, &self.root, &self.store.path, size)?,
+            },
+            Host::Tmux => tmux::open_below(source, &self.root, &self.store.path, size)?,
+            Host::None => return Ok(None),
+        };
+        let pane = viewer.pane.clone();
+        self.store.update(&self.key, "", |p| {
+            p.viewer = Some(viewer);
+            p.view_suppressed = false;
+            Ok(())
+        })?;
+        Ok(Some(pane))
+    }
+}
+
+fn print_plan(plan: &Plan) {
+    println!("{}", view::summary(Some(plan)));
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("ap: {e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
+    let cli = Cli::parse();
+    let ctx = context(cli.plan)?;
+    let command = cli.command.unwrap_or(Cmd::Status { json: false });
+    let plan = match command {
+        Cmd::Goal { text } => {
+            ctx.update(&format!("goal {text}"), |p| {
+                p.goal = Some(text.trim().to_string()).filter(|s| !s.is_empty());
+                Ok(())
+            })?
+            .0
+        }
+        Cmd::Add { titles } => {
+            ctx.update(&format!("add {}", titles.join(" | ")), |p| {
+                titles.iter().try_for_each(|t| p.add(t).map(drop))
+            })?
+            .0
+        }
+        Cmd::Start { item } => {
+            ctx.update(&format!("start {item}"), |p| {
+                p.set(&item, State::Doing, None, None)
+            })?
+            .0
+        }
+        Cmd::Done { items } => {
+            ctx.update(&format!("done {}", items.join(" ")), |p| {
+                items
+                    .iter()
+                    .try_for_each(|i| p.set(i, State::Done, None, None).map(drop))
+            })?
+            .0
+        }
+        Cmd::Block {
+            item,
+            reason,
+            needs,
+        } => {
+            ctx.update(&format!("block {item}: {reason}"), |p| {
+                p.set(&item, State::Blocked, Some(reason.clone()), needs.clone())
+            })?
+            .0
+        }
+        Cmd::Cancel { item, reason } => {
+            ctx.update(&format!("cancel {item}"), |p| {
+                p.set(&item, State::Cancelled, reason.clone(), None)
+            })?
+            .0
+        }
+        Cmd::Todo { item } => {
+            ctx.update(&format!("todo {item}"), |p| {
+                p.set(&item, State::Todo, None, None)
+            })?
+            .0
+        }
+        Cmd::Rm { item } => {
+            ctx.update(&format!("rm {item}"), |p| p.remove(&item).map(drop))?
+                .0
+        }
+        Cmd::New => {
+            let old = ctx.store.load()?;
+            if let Some(v) = old.as_ref().and_then(|p| p.viewer.clone()) {
+                // Keep the viewer pane; it watches the same path and will show the new plan.
+                ctx.store.archive()?;
+                let (p, _) = ctx.update("new", |p| {
+                    p.viewer = Some(v);
+                    Ok(())
+                })?;
+                p
+            } else {
+                ctx.store.archive()?;
+                ctx.update("new", |_| Ok(()))?.0
+            }
+        }
+        Cmd::Status { json } => {
+            let plan = ctx.store.load()?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
             } else {
-                println!("{}", ui::summary(&plan));
+                println!("{}", view::summary(plan.as_ref()));
             }
+            return Ok(());
         }
-        Command::Validate => {
-            let plan = store::read(file)?;
-            println!(
-                "valid schema={} revision={} tasks={}",
-                plan.schema_version,
-                plan.revision,
-                plan.tasks.len()
-            );
-        }
-        Command::History => {
-            for event in store::read(file)?.history {
-                println!(
-                    "r{} {} [{}] {} {} — {}",
-                    event.revision,
-                    event.at,
-                    event.actor,
-                    event.action,
-                    event.task.map(|id| id.to_string()).unwrap_or_default(),
-                    event.reason
-                );
+        Cmd::History => {
+            match std::fs::read_to_string(ctx.store.history_path()) {
+                Ok(s) => print!("{s}"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => println!("이력 없음"),
+                Err(e) => return Err(e.into()),
             }
+            return Ok(());
         }
-        Command::Watch => ui::watch(file)?,
-        command => {
-            let mut changed = None;
-            let plan = store::update(file, cli.expect_revision, |plan| {
-                let (action, id, reason) = match command {
-                    Command::Add {
-                        title,
-                        criterion,
-                        require,
-                        depends_on,
-                        reason,
-                    } => {
-                        let task = Task::new(title, criterion, require, depends_on);
-                        let id = task.id;
-                        plan.tasks.push(task);
-                        ("add".to_owned(), id, reason)
-                    }
-                    Command::Status {
-                        id,
-                        status,
-                        reason,
-                        next,
-                    } => {
-                        plan.set_status(id, status, &reason, next)?;
-                        (format!("status:{status:?}"), id, reason)
-                    }
-                    Command::Report {
-                        id,
-                        status,
-                        reason,
-                        next,
-                    } => {
-                        let task = plan.task_mut(id)?;
-                        task.report(status, actor, &reason);
-                        if status == Status::Blocked {
-                            task.blocker = Some(reason.clone());
-                        }
-                        if let Some(next) = next {
-                            task.next_action = next;
-                        }
-                        plan.hold_dependencies();
-                        (format!("report:{status:?}"), id, reason)
-                    }
-                    Command::Evidence {
-                        id,
-                        kind,
-                        reference,
-                    } => {
-                        model::nonempty(&reference, "evidence reference")?;
-                        plan.task_mut(id)?.evidence.push(Evidence {
-                            kind,
-                            reference: reference.clone(),
-                            actor: actor.clone(),
-                            recorded_at: model::now(),
-                            stale: false,
-                            code_revision: None,
-                        });
-                        (format!("evidence:{kind:?}"), id, reference)
-                    }
-                    Command::Invalidate { id, reason } => {
-                        // Include dependent tasks so completed work cannot retain invalid prerequisites.
-                        plan.invalidate(id, &reason)?;
-                        ("invalidate".into(), id, reason)
-                    }
-                    Command::Bind { id, agent, session } => {
-                        plan.task_mut(id)?.session = Some(Session {
-                            agent: agent.clone(),
-                            id: session.clone(),
-                        });
-                        ("bind".into(), id, format!("{agent} / {session}"))
-                    }
-                    Command::Note { id, text, next } => {
-                        let task = plan.task_mut(id)?;
-                        if let Some(next) = next {
-                            task.next_action = next;
-                        }
-                        task.notes.push(text.clone());
-                        ("note".into(), id, text)
-                    }
-                    _ => unreachable!(),
-                };
-                changed = Some(id);
-                plan.record(actor, &action, Some(id), &reason)
+        Cmd::View { file, once } => {
+            let store = file.map(Store::at).unwrap_or(ctx.store);
+            if once {
+                println!("{}", view::summary(store.load()?.as_ref()));
+                return Ok(());
+            }
+            return view::watch(&store);
+        }
+        Cmd::Open => {
+            let (plan, _) = ctx.update("", |p| {
+                p.view_suppressed = false;
+                Ok(())
+            })?;
+            match ctx.ensure_view(&plan, true)? {
+                Some(pane) => println!("진행 창: {pane}"),
+                None => println!("진행 창이 이미 열려 있습니다"),
+            }
+            return Ok(());
+        }
+        Cmd::Close => {
+            let plan = ctx.store.load()?.context("이 계획이 없습니다")?;
+            let closed = match (&plan.viewer, ctx.host) {
+                (Some(v), Host::Herdr) => herdr::close(v)?,
+                (Some(v), Host::Tmux) => tmux::close(v)?,
+                _ => false,
+            };
+            ctx.update("", |p| {
+                p.viewer = None;
+                p.view_suppressed = true;
+                Ok(())
             })?;
             println!(
-                "{} revision={}",
-                changed.context("no changed task")?,
-                plan.revision
+                "{}",
+                if closed {
+                    "진행 창을 닫았습니다"
+                } else {
+                    "열린 진행 창이 없습니다"
+                }
             );
+            return Ok(());
+        }
+    };
+    print_plan(&plan);
+    if !cli.no_view {
+        // Display failure never undoes the recorded change.
+        match ctx.ensure_view(&plan, false) {
+            Ok(Some(pane)) => println!("진행 창: {pane}"),
+            Ok(None) => {}
+            Err(e) => eprintln!("ap: 기록은 저장됨, 진행 창 열기 실패: {e:#}"),
         }
     }
     Ok(())
-}
-
-fn main() -> ExitCode {
-    match run(Cli::parse()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("ap: {error:#}");
-            ExitCode::FAILURE
-        }
-    }
 }

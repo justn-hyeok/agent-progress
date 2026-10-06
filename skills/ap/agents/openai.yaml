@@ -1,4 +1,4 @@
 interface:
   display_name: "ap · Agent Progress"
-  short_description: "Show the current agent plan in a passive progress pane"
-  default_prompt: "Use $ap to show this project's existing agent plan in a passive progress pane."
+  short_description: "Record the current plan and show it in a progress pane"
+  default_prompt: "Use $ap to record this task's plan so progress shows in a separate pane."

@@ -31,19 +31,12 @@ members = {
     'VERSION': (version + '\n').encode(),
     'install.sh': (root / 'scripts/install.sh').read_bytes(),
     'README.md': (root / 'docs/distribution.md').read_bytes(),
-    'OPERATIONS.md': (root / 'docs/operations.md').read_bytes(),
+    'OPERATIONS.md': (root / 'README.md').read_bytes(),
     'CHANGELOG.md': (root / 'CHANGELOG.md').read_bytes(),
     'THIRD_PARTY.md': (root / 'docs/third-party.md').read_bytes(),
-    'theme-example.yaml': (root / 'docs/theme-example.yaml').read_bytes(),
 }
-for skill_name in ('ap', 'ap-connect', 'ap-theme', 'ap-recover'):
-    skill_dir = root / 'skills' / skill_name
-    for relative in ('SKILL.md', 'agents/openai.yaml'):
-        path = skill_dir / relative
-        members[path.relative_to(root).as_posix()] = path.read_bytes()
-    if skill_name == 'ap':
-        for path in sorted((skill_dir / 'references').glob('*.md')):
-            members[path.relative_to(root).as_posix()] = path.read_bytes()
+for relative in ('skills/ap/SKILL.md', 'skills/ap/agents/openai.yaml'):
+    members[relative] = (root / relative).read_bytes()
 members['SHA256SUMS'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {path}\n' for path, data in sorted(members.items())).encode()
 with tempfile.NamedTemporaryFile(dir=args.output, delete=False) as temp:
     staged = Path(temp.name)

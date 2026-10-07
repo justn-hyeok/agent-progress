@@ -37,7 +37,9 @@ ap view              # 현재 터미널에서 진행 창 실행
 | `CODEX_THREAD_ID` | `codex-<thread>` | 스레드 이름이 제목인 Codex pane 아래 자동 |
 | 그 외 | `default` | `ap view`로 직접 |
 
-계획은 Git 루트(없으면 현재 디렉터리)의 `.agent-progress/plans/<key>.json`에 저장되므로
+계획은 Git 루트(없으면 현재 디렉터리)의 `.agent-progress/plans/<key>.json`에 저장됩니다.
+`.agent-progress/.gitignore`를 자동으로 만들어 어느 프로젝트에서도 커밋되지 않습니다.
+Git 루트 기준이므로
 하위 디렉터리에서 실행해도 같은 계획을 씁니다. 같은 pane ID가 다른 terminal에 재사용되면
 이전 계획은 보관되고 새 계획으로 시작합니다.
 
@@ -93,9 +95,20 @@ Cline은 세션 식별 정보 없이 공유 데몬에서 명령을 실행하므�
 - 창 열기에 실패해도 기록은 저장됩니다.
 - 파일이 손상되면 덮어쓰지 않고 오류를 보고하며, 진행 창은 마지막 정상 상태를 표시합니다.
 
-## 에이전트 지침
+## 에이전트가 스스로 쓰게 하기
 
-에이전트 스킬은 [skills/ap/SKILL.md](skills/ap/SKILL.md)에 있습니다.
+```sh
+ap skill install --dry-run   # 바뀔 내용만 보기
+ap skill install             # 설치
+ap skill remove              # ap가 설치한 것만 되돌리기
+```
+
+- 스킬([skills/ap/SKILL.md](skills/ap/SKILL.md))을 `~/.agents/skills/ap`에 설치합니다. Cursor·Copilot·Cline·
+  OMP·Gemini·Devin·pi·Command Code·Amp는 이 폴더를 직접 읽습니다.
+- `~/.agents/skills`를 읽지 않는 Claude Code·Codex·OpenCode·Antigravity의 스킬 폴더가 있으면 링크를 겁니다.
+- Claude Code는 목록에 있는 스킬을 스스로 잘 꺼내 쓰지 않으므로 `~/.claude/CLAUDE.md`에 표시된 지침 블록을
+  추가합니다. 기존 파일은 `CLAUDE.md.ap-backup-<시각>`으로 백업합니다.
+- ap가 설치하지 않은 같은 이름의 스킬이나 링크는 건드리지 않습니다. GJC와 Hermes는 별도 등록이 필요합니다.
 
 ## 개발
 

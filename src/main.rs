@@ -1,4 +1,5 @@
 mod herdr;
+mod skill;
 mod store;
 mod tmux;
 mod view;
@@ -80,6 +81,26 @@ enum Cmd {
     Open,
     /// 이 계획의 진행 창을 닫고 자동 열기를 멈춥니다
     Close,
+    /// 에이전트가 ap를 스스로 쓰도록 스킬과 지침을 설치·제거합니다
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillAction {
+    /// ~/.agents/skills/ap 설치, 하네스 스킬 폴더 연결, Claude Code 지침 추가 (기존 파일은 백업)
+    Install {
+        /// 바꾸지 않고 할 일만 보여줍니다
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// ap가 설치한 스킬, 연결, 지침만 제거합니다
+    Remove {
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -298,6 +319,14 @@ fn run() -> Result<()> {
         }
         return view::watch(&store, instance.as_deref());
     }
+    if let Some(Cmd::Skill { action }) = &cli.command {
+        let report = match action {
+            SkillAction::Install { dry_run } => skill::install(*dry_run)?,
+            SkillAction::Remove { dry_run } => skill::remove(*dry_run)?,
+        };
+        report.iter().for_each(|line| println!("{line}"));
+        return Ok(());
+    }
     let ctx = context(cli.plan)?;
     let command = cli.command.unwrap_or(Cmd::Status { json: false });
     let plan = match command {
@@ -406,6 +435,7 @@ fn run() -> Result<()> {
             }
             return Ok(());
         }
+        Cmd::Skill { .. } => unreachable!("handled before pane resolution"),
         Cmd::Close => {
             let plan = ctx.store.load()?.context("이 계획이 없습니다")?;
             let running = plan

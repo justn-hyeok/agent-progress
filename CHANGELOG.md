@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2.0 — 2026-10-08
+
+- `ap skill install` / `ap skill remove` (`--dry-run`): installs the bundled
+  `ap` skill to ~/.agents/skills/ap, links it into Claude Code, Codex,
+  OpenCode and Antigravity skill roots that exist, and adds a marked
+  `~/.claude/CLAUDE.md` block so Claude Code uses it without being asked
+  (backup kept). Only what `ap` installed is removed; foreign entries are left.
+- `.agent-progress/.gitignore` is created automatically, so plans are never
+  committed in any project.
+
 ## 3.1.0 — 2026-10-06
 
 - Cline support: Cline runs commands from a shared daemon with no Herdr or

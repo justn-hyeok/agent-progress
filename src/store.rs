@@ -219,6 +219,19 @@ pub fn sanitize(key: &str) -> String {
     }
 }
 
+/// Plans are local working state: keep the whole `.agent-progress` folder out of Git
+/// in any project, without touching the project's own .gitignore.
+fn ignore_in_git(plans_dir: &Path) {
+    if let Some(base) = plans_dir.parent()
+        && base.file_name().is_some_and(|n| n == ".agent-progress")
+    {
+        let file = base.join(".gitignore");
+        if !file.exists() {
+            let _ = fs::write(file, "*\n");
+        }
+    }
+}
+
 pub struct Store {
     pub path: PathBuf,
     lock: PathBuf,
@@ -276,6 +289,7 @@ impl Store {
     ) -> Result<(Plan, T)> {
         let dir = self.path.parent().context("plan path")?;
         fs::create_dir_all(dir)?;
+        ignore_in_git(dir);
         let lock = OpenOptions::new()
             .create(true)
             .truncate(false)

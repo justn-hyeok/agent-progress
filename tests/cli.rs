@@ -349,3 +349,31 @@ fn closed_output_pipe_does_not_panic() {
     child.wait().unwrap();
     assert!(!stderr.contains("panicked"), "{stderr}");
 }
+
+#[test]
+fn plan_folder_is_ignored_by_git() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    ok(dir.path(), &["add", "a"]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".agent-progress/.gitignore")).unwrap(),
+        "*\n"
+    );
+    let out = Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}

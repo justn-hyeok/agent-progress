@@ -298,11 +298,23 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
                     let at = phase * (edge + 1.5 * band) - band / 2.0 - depth * bend + lead;
                     let width_now = band * (1.0 - 0.35 * bend);
                     let d = ((center - at) / (width_now / 2.0)).abs();
-                    let light = if d < 1.0 {
+                    let head = if d < 1.0 {
                         0.5 + 0.5 * (std::f64::consts::PI * d).cos()
                     } else {
                         0.0
                     };
+                    // A soft tail behind the arrow fills the gap the faded gradient leaves
+                    // between the bar and the arrow, so it melts away instead of floating
+                    // off on its own. It shows where the fill has faded, not deep inside.
+                    // Measured from the arrow's centre so the head flows into the tail with
+                    // no dark notch; strongest where the gradient has faded.
+                    let behind = at - center;
+                    let tail = if behind >= 0.0 {
+                        (-behind / (band * 1.4)).exp() * 0.75 * (0.35 + 0.65 * (1.0 - t))
+                    } else {
+                        0.0
+                    };
+                    let light = head.max(tail);
                     let fade = 1.0 - smooth((phase - 0.72) / 0.28);
                     mix(base, p.glow, 0.38 * light * fade * (0.65 + 0.35 * t))
                 })
@@ -1318,6 +1330,67 @@ mod tests {
         assert!(!lit.is_empty());
         assert!(rows[7].0 > 60, "tip past the edge: {rows:?}");
         assert!(rows[0].0 < rows[7].0, "still an arrow: {rows:?}");
+    }
+
+    #[test]
+    fn no_dark_gap_between_the_bar_and_a_departing_arrow() {
+        let ratio = 0.6;
+        let phase = 0.86;
+        let plain = pixels(&SIGNAL, &Look { ratio, sweep: None }, 100, 7);
+        let lit = pixels(
+            &SIGNAL,
+            &Look {
+                ratio,
+                sweep: Some(phase),
+            },
+            100,
+            7,
+        );
+        let middle = 7;
+        let tip = (0..100)
+            .rev()
+            .find(|&x| green(lit[middle][x]) > green(plain[middle][x]))
+            .unwrap();
+        assert!(tip > 60, "tip past the edge: {tip}");
+        // Every cell from where the gradient fades out to the arrow is lit.
+        for x in 55..tip {
+            assert!(
+                green(lit[middle][x]) > green(plain[middle][x]),
+                "gap at {x} (tip {tip})"
+            );
+        }
+    }
+
+    #[test]
+    fn the_glow_falls_off_smoothly_behind_the_arrow() {
+        let plain = pixels(
+            &SIGNAL,
+            &Look {
+                ratio: 0.6,
+                sweep: None,
+            },
+            100,
+            7,
+        );
+        let lit = pixels(
+            &SIGNAL,
+            &Look {
+                ratio: 0.6,
+                sweep: Some(0.6),
+            },
+            100,
+            7,
+        );
+        let lift: Vec<i32> = (0..100)
+            .map(|x| i32::from(green(lit[7][x])) - i32::from(green(plain[7][x])))
+            .collect();
+        let peak = (0..100).max_by_key(|&x| lift[x]).unwrap();
+        // Going back from the brightest point the added light never dips and rises again.
+        let back: Vec<i32> = lift[..=peak].iter().rev().copied().collect();
+        assert!(
+            back.windows(2).all(|w| w[1] <= w[0] + 1),
+            "notch behind the arrow: {back:?}"
+        );
     }
 
     #[test]

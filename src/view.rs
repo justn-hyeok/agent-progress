@@ -50,6 +50,10 @@ struct Palette {
     muted: Color,
     metadata: Color,
     warning: Color,
+    /// Arrowhead colour: a distinct, brighter green than the shaft.
+    head: Color,
+    /// Breathing target: cool, so the edge never turns yellowish.
+    glow: Color,
 }
 
 /// Signal preset with the brighter fill and secondary text the user tuned in 1.x.
@@ -61,6 +65,8 @@ const SIGNAL: Palette = Palette {
     muted: Color::Rgb(0xC4, 0xD0, 0xC6),
     metadata: Color::Rgb(0xB6, 0xC4, 0xBA),
     warning: Color::Rgb(0xF5, 0xC2, 0x6F),
+    head: Color::Rgb(0x3E, 0x7A, 0x55),
+    glow: Color::Rgb(0x6C, 0xC4, 0x92),
 };
 
 fn hex(value: Option<&serde_json::Value>) -> Option<Color> {
@@ -89,6 +95,8 @@ fn palette(store: &Store) -> Palette {
         muted: pick("muted", SIGNAL.muted),
         metadata: pick("metadata", SIGNAL.metadata),
         warning: pick("warning", SIGNAL.warning),
+        head: pick("head", SIGNAL.head),
+        glow: pick("glow", SIGNAL.glow),
     }
 }
 
@@ -252,16 +260,6 @@ fn arrow_target(done: usize, total: usize) -> f64 {
     }
 }
 
-/// Arrowhead protrusion per row for a `->` shape: two cells per row toward the middle
-/// (terminal cells are about twice as tall as wide, so this reads as ~45°). Five rows
-/// give `0·2·4·2·0`; even heights get two apex rows. Capped for very tall panes.
-fn arrow_offsets(height: usize) -> Vec<f64> {
-    let c = height.saturating_sub(1) as f64 / 2.0;
-    (0..height)
-        .map(|r| (2.0 * (c - (r as f64 - c).abs())).min(8.0))
-        .collect()
-}
-
 fn smooth(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -282,47 +280,72 @@ fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
         return (vec![vec![p.fill; width]; height], vec![None; height]);
     }
     let edge = look.ratio * width as f64;
-    let offsets = arrow_offsets(height);
-    let peak = offsets.iter().copied().fold(0.0, f64::max).min(edge / 2.0);
-    let glow_color = mix(p.fill, p.accent, 0.45);
-    let soft = mix(p.track, p.fill, 0.8);
     let g = look.glow.unwrap_or(0.0);
+    let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(edge.max(1.0));
+    // The fill keeps its gradient into the track at every stage.
+    let body = |center: f64| {
+        let t = smooth((edge - center) / ramp);
+        let base = mix(p.track, p.fill, t);
+        let lift = (std::f64::consts::PI * t).sin() * (1.0 - look.arrow);
+        mix(base, p.glow, 0.3 * g * lift)
+    };
+    let arrow = arrow_cells(edge, width, height);
+    let head = mix(p.head, p.glow, 0.45 * g);
     let mut rows = Vec::with_capacity(height);
-    let mut tips = Vec::with_capacity(height);
-    for off in offsets {
-        let off = off.min(peak);
-        let row_edge = (edge - (peak - off) * look.arrow).max(0.0);
-        let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(row_edge.max(1.0));
-        let colour_at = |center: f64| {
-            let t = smooth((row_edge - center) / ramp);
-            let flat = mix(p.track, p.fill, t);
-            let inner = mix(soft, p.fill, t);
-            let base = mix(flat, inner, look.arrow);
-            // Flat edge: lift the middle of the fade (zero at both ends). Arrowhead: lift
-            // the last few cells before the crisp edge.
-            let flat_lift = (std::f64::consts::PI * t).sin();
-            let arrow_lift = (1.0 - (row_edge - center) / 3.0).clamp(0.0, 1.0);
-            let lift = flat_lift * (1.0 - look.arrow) + arrow_lift * look.arrow;
-            mix(base, glow_color, 0.35 * g * lift)
-        };
+    let tips = vec![None; height];
+    for cells in &arrow {
         let row: Vec<Color> = (0..width)
             .map(|x| {
-                if (x as f64) + 1.0 <= row_edge {
-                    colour_at(x as f64 + 0.5)
+                let base = if (x as f64) + 1.0 <= edge {
+                    body(x as f64 + 0.5)
                 } else {
                     p.track
+                };
+                if cells.contains(&x) {
+                    // Draw the `->` over the fading fill, faded in as the arrow appears.
+                    mix(base, head, look.arrow)
+                } else {
+                    base
                 }
             })
             .collect();
-        let last = row_edge.floor() as usize;
-        let frac = row_edge - row_edge.floor();
-        // Half-cell tips only on the crisp arrow edge; a fading edge has none.
-        let tip = (look.arrow > 0.5 && frac >= 0.5 && last < width)
-            .then(|| (last, colour_at(row_edge - 0.25)));
         rows.push(row);
-        tips.push(tip);
     }
     (rows, tips)
+}
+
+/// Cells of a `->` arrow pointing at the progress edge: a shaft on the middle row(s)
+/// and a `>` head whose arms slope back two cells per row (cells are about twice as
+/// tall as wide). The head tip touches the edge.
+fn arrow_cells(edge: f64, width: usize, height: usize) -> Vec<Vec<usize>> {
+    let c = height.saturating_sub(1) as f64 / 2.0;
+    let arm_rows = c.min(3.0);
+    let tip = edge.floor() as isize;
+    let shaft = ((width as f64) * 0.08).clamp(4.0, 10.0) as isize;
+    (0..height)
+        .map(|r| {
+            let d = (r as f64 - c).abs();
+            let mut cells = Vec::new();
+            if d <= arm_rows {
+                // Arm stroke, two cells thick, stepping back two cells per row.
+                let back = (2.0 * d).round() as isize;
+                for k in 1..=2 {
+                    cells.push(tip - back - k);
+                }
+            }
+            if d <= 0.5 {
+                // Shaft on the middle row(s), ending where the head starts.
+                for k in 3..3 + shaft {
+                    cells.push(tip - k);
+                }
+            }
+            cells
+                .into_iter()
+                .filter(|x| *x >= 0 && (*x as usize) < width)
+                .map(|x| x as usize)
+                .collect()
+        })
+        .collect()
 }
 
 fn field(label: &str, value: String, value_style: Style, p: &Palette) -> Line<'static> {
@@ -1172,13 +1195,6 @@ mod tests {
     }
 
     #[test]
-    fn arrow_shape_by_height() {
-        assert_eq!(arrow_offsets(5), vec![0.0, 2.0, 4.0, 2.0, 0.0]);
-        assert_eq!(arrow_offsets(6), vec![0.0, 2.0, 4.0, 4.0, 2.0, 0.0]);
-        assert_eq!(arrow_offsets(7), vec![0.0, 2.0, 4.0, 6.0, 4.0, 2.0, 0.0]);
-    }
-
-    #[test]
     fn arrow_only_from_half_until_done() {
         let at = |done, total| {
             let mut p = plan(total);
@@ -1193,22 +1209,47 @@ mod tests {
         assert_eq!(at(0, 3).arrow, 0.0);
     }
 
-    fn filled(row: &[Color]) -> usize {
-        row.iter().filter(|c| **c != SIGNAL.track).count()
+    #[test]
+    fn arrow_is_a_shaft_and_a_head_pointing_at_the_edge() {
+        let cells = arrow_cells(50.0, 100, 7);
+        // Middle row: head tip right before the edge, then the shaft behind it.
+        assert!(cells[3].contains(&49) && cells[3].contains(&48));
+        assert!(
+            cells[3].iter().any(|x| *x < 44),
+            "shaft extends back: {:?}",
+            cells[3]
+        );
+        // Arms step back two cells per row; nothing reaches past the edge.
+        assert_eq!(cells[2], vec![47, 46]);
+        assert_eq!(cells[1], vec![45, 44]);
+        assert_eq!(cells[0], vec![43, 42]);
+        assert_eq!(cells[0], cells[6]);
+        assert!(cells.iter().flatten().all(|x| *x < 50));
+        // Even heights: two middle rows carry the shaft.
+        let even = arrow_cells(50.0, 100, 6);
+        assert_eq!(even[2], even[3]);
+        assert!(even[2].len() > 2);
     }
 
     #[test]
-    fn arrow_tip_sits_at_the_edge_and_outer_rows_pull_back() {
+    fn arrow_keeps_the_gradient_underneath() {
         let look = Look {
-            ratio: 0.5,
+            ratio: 0.6,
             arrow: 1.0,
             glow: None,
         };
-        let (rows, _) = fill_cells(&SIGNAL, &look, 40, 5);
-        assert_eq!(filled(&rows[2]), 20, "apex reaches the progress edge");
-        assert_eq!(filled(&rows[1]), 18);
-        assert_eq!(filled(&rows[0]), 16);
-        assert_eq!(rows[0], rows[4]);
+        let (rows, _) = fill_cells(&SIGNAL, &look, 100, 7);
+        // Away from the arrow the fill still fades toward the edge.
+        let row = &rows[0];
+        assert_eq!(row[0], SIGNAL.fill);
+        assert_ne!(
+            row[55],
+            SIGNAL.fill,
+            "fade before the edge: {:?}",
+            &row[50..60]
+        );
+        assert_eq!(row[60], SIGNAL.track);
+        assert_eq!(rows[3][59], SIGNAL.head, "arrow tip at the edge");
     }
 
     #[test]
@@ -1269,28 +1310,6 @@ mod tests {
         };
         assert!(solid(1.0).iter().flatten().all(|c| *c == SIGNAL.fill));
         assert!(solid(0.0).iter().flatten().all(|c| *c == SIGNAL.track));
-    }
-
-    #[test]
-    fn arrow_fade_stays_inside_the_fill() {
-        let look = Look {
-            ratio: 0.6,
-            arrow: 1.0,
-            glow: None,
-        };
-        let (rows, _) = fill_cells(&SIGNAL, &look, 50, 5);
-        let soft = mix(SIGNAL.track, SIGNAL.fill, 0.8);
-        // Last filled cell is the softest but never the bare track colour.
-        let last = rows[2][filled(&rows[2]) - 1];
-        assert_ne!(last, SIGNAL.track);
-        assert_ne!(last, SIGNAL.fill);
-        let Color::Rgb(_, g_last, _) = last else {
-            panic!()
-        };
-        let Color::Rgb(_, g_soft, _) = soft else {
-            panic!()
-        };
-        assert!(g_last >= g_soft);
     }
 
     #[test]
@@ -1508,7 +1527,18 @@ mod tests {
             }
             let mut look = Look::of(Some(&plan));
             look.glow = glow;
-            let terminal = render(&plan, 96, 7, &look);
+            let mut theme = SIGNAL;
+            if let Ok(spec) = std::env::var("AP_PREVIEW_THEME") {
+                let c: Vec<Color> = spec
+                    .split(',')
+                    .map(|h| hex(Some(&serde_json::json!(h))).unwrap())
+                    .collect();
+                (theme.track, theme.fill, theme.head, theme.glow) = (c[0], c[1], c[2], c[3]);
+            }
+            let mut terminal = Terminal::new(TestBackend::new(96, 7)).unwrap();
+            terminal
+                .draw(|f| draw(f, &theme, Some(&plan), None, "plans/x.json", &look))
+                .unwrap();
             let buffer = terminal.backend().buffer();
             let rgb = |c: Color| match c {
                 Color::Rgb(r, g, b) => vec![r, g, b],

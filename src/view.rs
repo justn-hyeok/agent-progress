@@ -50,9 +50,7 @@ struct Palette {
     muted: Color,
     metadata: Color,
     warning: Color,
-    /// Arrowhead colour: a distinct, brighter green than the shaft.
-    head: Color,
-    /// Breathing target: cool, so the edge never turns yellowish.
+    /// The travelling light: cool, so the fill never turns yellowish.
     glow: Color,
 }
 
@@ -65,7 +63,6 @@ const SIGNAL: Palette = Palette {
     muted: Color::Rgb(0xC4, 0xD0, 0xC6),
     metadata: Color::Rgb(0xB6, 0xC4, 0xBA),
     warning: Color::Rgb(0xF5, 0xC2, 0x6F),
-    head: Color::Rgb(0x3E, 0x7A, 0x55),
     glow: Color::Rgb(0x6C, 0xC4, 0x92),
 };
 
@@ -95,7 +92,6 @@ fn palette(store: &Store) -> Palette {
         muted: pick("muted", SIGNAL.muted),
         metadata: pick("metadata", SIGNAL.metadata),
         warning: pick("warning", SIGNAL.warning),
-        head: pick("head", SIGNAL.head),
         glow: pick("glow", SIGNAL.glow),
     }
 }
@@ -123,22 +119,20 @@ fn ellipsize(text: &str, width: usize) -> String {
 }
 
 /// How the bar looks at one instant: the displayed ratio (may lag the plan while
-/// sliding), the arrow scale (0 = flat edge, 1 = full arrow) and the edge glow.
+/// sliding) and, while recently recorded, where the travelling light is (0..1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Look {
     pub ratio: f64,
-    pub arrow: f64,
-    pub glow: Option<f64>,
+    pub sweep: Option<f64>,
 }
 
 impl Look {
-    /// Static look for a plan: no motion, arrow from 50% up to (not including) 100%.
+    /// Static look for a plan: no motion.
     pub fn of(plan: Option<&Plan>) -> Self {
         let (done, total) = plan.map_or((0, 0), Plan::progress);
         Look {
             ratio: ratio(done, total),
-            arrow: arrow_target(done, total),
-            glow: None,
+            sweep: None,
         }
     }
 }
@@ -189,57 +183,42 @@ impl Tween {
 }
 
 const SLIDE_SECS: f64 = 0.6;
-const ARROW_SECS: f64 = 0.45;
-const BREATH_SECS: f64 = 2.4;
+const SWEEP_SECS: f64 = 2.8;
 
-/// One-shot transitions plus the idle "recent record" breathing, as a pure function of
-/// time so it can be tested without sleeping.
+/// The completion slide plus the idle travelling light, as a pure function of time so
+/// it can be tested without sleeping.
 #[derive(Clone, Copy, Debug)]
 pub struct Motion {
     ratio: Tween,
-    arrow: Tween,
-    arrow_goal: f64,
 }
 
 impl Motion {
     /// No transition: first load, or the viewer switched to another plan.
     pub fn snap(plan: Option<&Plan>) -> Self {
-        let look = Look::of(plan);
         Motion {
-            ratio: Tween::snap(look.ratio),
-            arrow: Tween::snap(look.arrow),
-            arrow_goal: look.arrow,
+            ratio: Tween::snap(Look::of(plan).ratio),
         }
     }
 
     /// The same plan changed: slide the fill from where it is shown now.
     pub fn update(&mut self, t: f64, plan: Option<&Plan>) {
-        let look = Look::of(plan);
-        self.ratio.retarget(t, look.ratio, SLIDE_SECS);
-        self.arrow_goal = look.arrow;
+        self.ratio.retarget(t, Look::of(plan).ratio, SLIDE_SECS);
     }
 
-    /// Look at time `t`. The arrow grows once the shown fill reaches half way, and
-    /// shrinks as soon as it is no longer wanted. `breathe` lets the edge glow.
-    pub fn look(&mut self, t: f64, breathe: bool) -> Look {
+    /// Look at time `t`. `flow` lets the light travel through the fill toward the edge;
+    /// it waits for a slide to finish and never runs on an empty or finished plan.
+    pub fn look(&self, t: f64, flow: bool) -> Look {
         let ratio = self.ratio.at(t);
-        let want = if self.arrow_goal > 0.0 && ratio >= 0.5 {
-            1.0
-        } else {
-            0.0
-        };
-        self.arrow.retarget(t, want, ARROW_SECS);
-        let settled = (ratio - self.ratio.to).abs() < 1e-9;
+        let settled = !self.ratio.moving(t);
         Look {
             ratio,
-            arrow: self.arrow.at(t),
-            glow: (breathe && ratio > 0.0 && ratio < 1.0 && settled)
-                .then(|| 0.5 - 0.5 * (std::f64::consts::TAU * t / BREATH_SECS).cos()),
+            sweep: (flow && ratio > 0.0 && ratio < 1.0 && settled)
+                .then(|| (t / SWEEP_SECS).rem_euclid(1.0)),
         }
     }
 
     pub fn moving(&self, t: f64) -> bool {
-        self.ratio.moving(t) || self.arrow.moving(t)
+        self.ratio.moving(t)
     }
 }
 
@@ -251,104 +230,47 @@ fn ratio(done: usize, total: usize) -> f64 {
     }
 }
 
-/// The arrow appears from half way (integer test, no float edge cases) until done.
-fn arrow_target(done: usize, total: usize) -> f64 {
-    if total > 0 && done * 2 >= total && done < total {
-        1.0
-    } else {
-        0.0
-    }
-}
-
 fn smooth(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Per-cell backgrounds (row-major) and per-row optional half-cell tip (column, colour).
-type Fill = (Vec<Vec<Color>>, Vec<Option<(usize, Color)>>);
-
-/// Background per cell (row-major) and, per row, an optional half-cell tip `▌` with its
-/// colour. Below half: a flat edge fading into the track (no tip). From half: a `->`
-/// arrowhead whose tip sits exactly at the progress edge, with a subtle fade kept
-/// inside the fill. The glow brightens a smooth stretch, never a single detached cell.
-fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
+/// Background per cell (row-major): solid fill that fades widely into the track at the
+/// progress edge. A soft band of light travels from the left toward the edge, fading
+/// with the gradient, so the direction of progress shows without drawing a shape.
+fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Color>> {
     if look.ratio <= 0.0 || width == 0 {
-        return (vec![vec![p.track; width]; height], vec![None; height]);
+        return vec![vec![p.track; width]; height];
     }
     if look.ratio >= 1.0 {
-        return (vec![vec![p.fill; width]; height], vec![None; height]);
+        return vec![vec![p.fill; width]; height];
     }
     let edge = look.ratio * width as f64;
-    let g = look.glow.unwrap_or(0.0);
     let ramp = (width as f64 * 0.35).clamp(6.0, 40.0).min(edge.max(1.0));
-    // The fill keeps its gradient into the track at every stage.
-    let body = |center: f64| {
-        let t = smooth((edge - center) / ramp);
-        let base = mix(p.track, p.fill, t);
-        let lift = (std::f64::consts::PI * t).sin() * (1.0 - look.arrow);
-        mix(base, p.glow, 0.3 * g * lift)
-    };
-    let arrow = arrow_cells(edge, width, height);
-    let head = mix(p.head, p.glow, 0.45 * g);
-    let mut rows = Vec::with_capacity(height);
-    let tips = vec![None; height];
-    for cells in &arrow {
-        let row: Vec<Color> = (0..width)
-            .map(|x| {
-                let base = if (x as f64) + 1.0 <= edge {
-                    body(x as f64 + 0.5)
-                } else {
-                    p.track
-                };
-                if cells.contains(&x) {
-                    // The `->` follows the same gradient as the fill, but stays stronger:
-                    // full head colour deep in the fill, still 55% at the tip.
-                    let t = smooth((edge - (x as f64 + 0.5)) / ramp);
-                    let arrow = mix(p.track, head, 0.55 + 0.45 * t);
-                    mix(base, arrow, look.arrow)
-                } else {
-                    base
-                }
-            })
-            .collect();
-        rows.push(row);
-    }
-    (rows, tips)
-}
-
-/// Cells of a `->` arrow pointing at the progress edge: a shaft on the middle row(s)
-/// and a `>` head whose arms slope back two cells per row (cells are about twice as
-/// tall as wide). The head tip touches the edge.
-fn arrow_cells(edge: f64, width: usize, height: usize) -> Vec<Vec<usize>> {
-    let c = height.saturating_sub(1) as f64 / 2.0;
-    let arm_rows = c.min(3.0);
-    let tip = edge.floor() as isize;
-    let shaft = ((width as f64) * 0.2).clamp(8.0, 24.0) as isize;
-    (0..height)
-        .map(|r| {
-            let d = (r as f64 - c).abs();
-            let mut cells = Vec::new();
-            if d <= arm_rows {
-                // Arm stroke, two cells thick, stepping back two cells per row.
-                let back = (2.0 * d).round() as isize;
-                for k in 1..=2 {
-                    cells.push(tip - back - k);
-                }
+    let band = (width as f64 * 0.12).clamp(4.0, 16.0);
+    let row: Vec<Color> = (0..width)
+        .map(|x| {
+            let center = x as f64 + 0.5;
+            if center > edge {
+                return p.track;
             }
-            if d <= 0.5 {
-                // Shaft on the middle row(s), ending where the head starts.
-                for k in 3..3 + shaft {
-                    cells.push(tip - k);
-                }
-            }
-            cells
-                .into_iter()
-                .filter(|x| *x >= 0 && (*x as usize) < width)
-                .map(|x| x as usize)
-                .collect()
+            let t = smooth((edge - center) / ramp);
+            let base = mix(p.track, p.fill, t);
+            let Some(phase) = look.sweep else {
+                return base;
+            };
+            // The band starts just left of the pane and ends at the edge.
+            let at = phase * (edge + band) - band / 2.0;
+            let d = ((center - at) / (band / 2.0)).abs();
+            let light = if d < 1.0 {
+                0.5 + 0.5 * (std::f64::consts::PI * d).cos()
+            } else {
+                0.0
+            };
+            mix(base, p.glow, 0.32 * light * (0.3 + 0.7 * t))
         })
-        .collect()
+        .collect();
+    vec![row; height]
 }
 
 fn field(label: &str, value: String, value_style: Style, p: &Palette) -> Line<'static> {
@@ -529,38 +451,24 @@ fn draw(
     paint(frame, p, look);
 }
 
-/// Paint the bar under the text. A half-cell tip goes only into a truly blank cell, and
-/// both halves of a wide (e.g. Korean) glyph keep one background so it stays legible.
+/// Paint the bar under the text; both halves of a wide (e.g. Korean) glyph keep one
+/// background so it stays legible on the gradient.
 fn paint(frame: &mut Frame, p: &Palette, look: &Look) {
     let area = frame.area();
-    let (rows, tips) = fill_cells(p, look, usize::from(area.width), usize::from(area.height));
+    let rows = fill_cells(p, look, usize::from(area.width), usize::from(area.height));
     let buf = frame.buffer_mut();
     for (r, row) in rows.iter().enumerate() {
         let y = area.y + r as u16;
         let mut wide_prev = false;
         for (c, bg) in row.iter().enumerate() {
-            let x = area.x + c as u16;
-            let cell = &mut buf[(x, y)];
+            let cell = &mut buf[(area.x + c as u16, y)];
             if wide_prev {
-                // Continuation half of the previous glyph: match its background.
-                let prev_bg = row[c - 1];
-                cell.bg = prev_bg;
+                cell.bg = row[c - 1];
                 wide_prev = false;
                 continue;
             }
             cell.bg = *bg;
             wide_prev = cell.symbol().width() == 2;
-        }
-        if let Some((c, colour)) = tips[r] {
-            let x = area.x + c as u16;
-            let blank = buf[(x, y)].symbol() == " ";
-            let after_wide = c > 0 && buf[(x - 1, y)].symbol().width() == 2;
-            if blank && !after_wide {
-                let cell = &mut buf[(x, y)];
-                cell.set_symbol("▌");
-                cell.fg = colour;
-                cell.bg = p.track;
-            }
         }
     }
 }
@@ -1021,7 +929,7 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Resu
             })?;
             // ~8 fps only while something moves; otherwise a slow poll. ratatui redraws
             // only the cells that changed.
-            let tick = if motion.moving(t()) || look.glow.is_some() {
+            let tick = if motion.moving(t()) || look.sweep.is_some() {
                 125
             } else {
                 500
@@ -1197,166 +1105,95 @@ mod tests {
         assert!(text.lines().last().unwrap().contains("파일›"), "{text}");
     }
 
-    #[test]
-    fn arrow_only_from_half_until_done() {
-        let at = |done, total| {
-            let mut p = plan(total);
-            for i in 1..=done {
-                p.set(&i.to_string(), State::Done, None, None).unwrap();
-            }
-            Look::of(Some(&p))
-        };
-        assert_eq!(at(1, 2).arrow, 1.0);
-        assert_eq!(at(49, 100).arrow, 0.0);
-        assert_eq!(at(3, 3).arrow, 0.0);
-        assert_eq!(at(0, 3).arrow, 0.0);
-    }
-
-    #[test]
-    fn arrow_is_a_shaft_and_a_head_pointing_at_the_edge() {
-        let cells = arrow_cells(50.0, 100, 7);
-        // Middle row: head tip right before the edge, then the shaft behind it.
-        assert!(cells[3].contains(&49) && cells[3].contains(&48));
-        assert!(
-            cells[3].iter().any(|x| *x < 44),
-            "shaft extends back: {:?}",
-            cells[3]
-        );
-        // Arms step back two cells per row; nothing reaches past the edge.
-        assert_eq!(cells[2], vec![47, 46]);
-        assert_eq!(cells[1], vec![45, 44]);
-        assert_eq!(cells[0], vec![43, 42]);
-        assert_eq!(cells[0], cells[6]);
-        assert!(cells.iter().flatten().all(|x| *x < 50));
-        // Even heights: two middle rows carry the shaft.
-        let even = arrow_cells(50.0, 100, 6);
-        assert_eq!(even[2], even[3]);
-        assert!(even[2].len() > 2);
-    }
-
-    #[test]
-    fn arrow_keeps_the_gradient_underneath() {
-        let look = Look {
-            ratio: 0.6,
-            arrow: 1.0,
-            glow: None,
-        };
-        let (rows, _) = fill_cells(&SIGNAL, &look, 100, 7);
-        // Away from the arrow the fill still fades toward the edge.
-        let row = &rows[0];
-        assert_eq!(row[0], SIGNAL.fill);
-        assert_ne!(
-            row[55],
-            SIGNAL.fill,
-            "fade before the edge: {:?}",
-            &row[50..60]
-        );
-        assert_eq!(row[60], SIGNAL.track);
-        // The arrow fades with the fill but stays stronger than it, even at the tip.
-        let green = |c: Color| match c {
+    fn green(c: Color) -> u8 {
+        match c {
             Color::Rgb(_, g, _) => g,
             _ => 0,
-        };
-        assert!(green(rows[3][59]) > green(rows[0][59]), "tip stands out");
-        assert!(green(rows[3][59]) < green(SIGNAL.head), "tip is faded");
-        let shaft: Vec<u8> = rows[3][45..60].iter().map(|c| green(*c)).collect();
-        assert!(
-            shaft.windows(2).all(|w| w[1] <= w[0]),
-            "fades toward the tip: {shaft:?}"
-        );
-    }
-
-    #[test]
-    fn glow_never_detaches_from_a_fading_edge() {
-        for done in [1, 3, 6, 12, 20] {
-            let look = Look {
-                ratio: f64::from(done) / 50.0,
-                arrow: 0.0,
-                glow: Some(1.0),
-            };
-            let (rows, tips) = fill_cells(&SIGNAL, &look, 96, 7);
-            assert!(
-                tips.iter().all(Option::is_none),
-                "no half tips on a fading edge"
-            );
-            // Brightness (green channel) never rises again toward the edge.
-            let greens: Vec<u8> = rows[0]
-                .iter()
-                .map(|c| match c {
-                    Color::Rgb(_, g, _) => *g,
-                    _ => 0,
-                })
-                .collect();
-            let peak = greens
-                .iter()
-                .position(|g| *g == *greens.iter().max().unwrap())
-                .unwrap();
-            assert!(
-                greens[peak..].windows(2).all(|w| w[1] <= w[0] + 1),
-                "{done}: {greens:?}"
-            );
         }
     }
 
     #[test]
-    fn below_half_is_a_flat_fade_and_extremes_are_solid() {
+    fn fill_fades_widely_into_the_track_and_extremes_are_solid() {
         let look = Look {
-            ratio: 0.3,
-            arrow: 0.0,
-            glow: None,
+            ratio: 0.6,
+            sweep: None,
         };
-        let (rows, _) = fill_cells(&SIGNAL, &look, 40, 5);
+        let rows = fill_cells(&SIGNAL, &look, 100, 7);
         assert!(rows.iter().all(|r| r == &rows[0]));
-        assert_eq!(rows[0][0], SIGNAL.fill);
-        assert_eq!(rows[0][12], SIGNAL.track);
+        let row = &rows[0];
+        assert_eq!(row[0], SIGNAL.fill);
+        assert_eq!(row[60], SIGNAL.track);
+        let fading = row[..60].iter().filter(|c| **c != SIGNAL.fill).count();
+        assert!(fading >= 30, "a wide gradient: {fading}");
+        let greens: Vec<u8> = row[..60].iter().map(|c| green(*c)).collect();
+        assert!(greens.windows(2).all(|w| w[1] <= w[0]), "{greens:?}");
         let solid = |r: f64| {
             fill_cells(
                 &SIGNAL,
                 &Look {
                     ratio: r,
-                    arrow: 0.0,
-                    glow: None,
+                    sweep: None,
                 },
                 30,
                 3,
             )
-            .0
         };
         assert!(solid(1.0).iter().flatten().all(|c| *c == SIGNAL.fill));
         assert!(solid(0.0).iter().flatten().all(|c| *c == SIGNAL.track));
     }
 
     #[test]
-    fn half_cell_tip_never_lands_on_a_wide_glyph() {
+    fn light_travels_toward_the_edge_and_stays_inside_the_fill() {
+        let brightest = |phase: f64| {
+            let look = Look {
+                ratio: 0.6,
+                sweep: Some(phase),
+            };
+            let plain = fill_cells(
+                &SIGNAL,
+                &Look {
+                    ratio: 0.6,
+                    sweep: None,
+                },
+                100,
+                7,
+            );
+            let lit = fill_cells(&SIGNAL, &look, 100, 7);
+            assert!(
+                lit[0][60..].iter().all(|c| *c == SIGNAL.track),
+                "never past the edge"
+            );
+            (0..100)
+                .max_by_key(|&x| green(lit[0][x]).saturating_sub(green(plain[0][x])))
+                .unwrap()
+        };
+        let early = brightest(0.2);
+        let late = brightest(0.7);
+        assert!(early < late, "light moves right: {early} -> {late}");
+    }
+
+    #[test]
+    fn glyph_halves_share_a_background_on_the_gradient() {
         let mut plan = Plan::new("t");
         plan.goal = Some("가나다라마바사아자차카타파하".into());
         plan.add("하나").unwrap();
         plan.add("둘").unwrap();
         plan.set("1", State::Done, None, None).unwrap();
-        for tenths in 0..40 {
+        for step in 0..20 {
             let look = Look {
-                ratio: 0.5 + f64::from(tenths) / 400.0,
-                arrow: 1.0,
-                glow: Some(1.0),
+                ratio: 0.5,
+                sweep: Some(f64::from(step) / 20.0),
             };
             let terminal = render(&plan, 70, 7, &look);
-            let text = text_of(&terminal);
-            assert!(text.contains("가나다라마바사아자차카타파하"), "{text}");
+            assert!(text_of(&terminal).contains("가나다라마바사아자차카타파하"));
             let buffer = terminal.backend().buffer();
             for y in 0..7 {
                 for x in 1..70 {
-                    if buffer[(x, y)].symbol() == "▌" {
-                        assert_ne!(buffer[(x - 1, y)].symbol().width(), 2);
-                    }
                     // The backend never receives a wide glyph's continuation cell (the
                     // terminal paints it with the glyph); check it when it is present.
                     if buffer[(x - 1, y)].symbol().width() == 2 && buffer[(x, y)].bg != Color::Reset
                     {
-                        assert_eq!(
-                            buffer[(x, y)].bg,
-                            buffer[(x - 1, y)].bg,
-                            "glyph halves share a background"
-                        );
+                        assert_eq!(buffer[(x, y)].bg, buffer[(x - 1, y)].bg);
                     }
                 }
             }
@@ -1364,44 +1201,42 @@ mod tests {
     }
 
     #[test]
-    fn completion_slides_and_the_arrow_grows_after_half() {
+    fn completion_slides_from_where_the_fill_is_shown() {
         let mut p = plan(4);
         p.set("1", State::Done, None, None).unwrap();
         let mut motion = Motion::snap(Some(&p));
         assert_eq!(motion.look(0.0, false).ratio, 0.25);
         p.set("2", State::Done, None, None).unwrap();
-        p.set("3", State::Done, None, None).unwrap();
         motion.update(10.0, Some(&p));
-        let mid = motion.look(10.1, false);
-        assert!(mid.ratio > 0.25 && mid.ratio < 0.75, "{mid:?}");
-        assert!(motion.moving(10.1));
-        let settled = motion.look(10.6, false);
-        assert_eq!(settled.ratio, 0.75);
-        // The arrow starts growing once the shown fill passed half way.
-        let grown = motion.look(10.6 + ARROW_SECS, false);
-        assert_eq!(grown.arrow, 1.0);
-        assert!(!motion.moving(11.2));
+        let mid = motion.look(10.1, false).ratio;
+        assert!(mid > 0.25 && mid < 0.5, "{mid}");
+        p.set("3", State::Done, None, None).unwrap();
+        motion.update(10.2, Some(&p));
+        assert!(
+            motion.look(10.2, false).ratio < 0.5,
+            "no jump on a quick second update"
+        );
+        assert_eq!(motion.look(10.2 + SLIDE_SECS, false).ratio, 0.75);
+        assert!(!motion.moving(11.0));
     }
 
     #[test]
-    fn breathing_only_when_settled_recent_and_unfinished() {
+    fn light_only_when_settled_recent_and_unfinished() {
         let mut p = plan(2);
         p.set("1", State::Done, None, None).unwrap();
         let mut motion = Motion::snap(Some(&p));
-        assert!(motion.look(1.0, true).glow.is_some());
-        assert!(
-            motion.look(1.0, false).glow.is_none(),
-            "stale: no breathing"
-        );
+        assert!(motion.look(1.0, true).sweep.is_some());
+        assert!(motion.look(1.0, false).sweep.is_none(), "stale: no light");
         p.set("2", State::Done, None, None).unwrap();
         motion.update(5.0, Some(&p));
         assert!(
-            motion.look(5.1, true).glow.is_none(),
-            "no breathing while sliding"
+            motion.look(5.1, true).sweep.is_none(),
+            "no light while sliding"
         );
+        assert!(motion.look(9.0, true).sweep.is_none(), "no light at 100%");
         assert!(
-            motion.look(9.0, true).glow.is_none(),
-            "no breathing at 100%"
+            Motion::snap(Some(&plan(3))).look(1.0, true).sweep.is_none(),
+            "none at 0%"
         );
     }
 
@@ -1411,7 +1246,7 @@ mod tests {
         let mut b = plan(2);
         b.set("1", State::Done, None, None).unwrap();
         let _ = Motion::snap(Some(&a));
-        let mut motion = Motion::snap(Some(&b));
+        let motion = Motion::snap(Some(&b));
         assert_eq!(motion.look(0.0, false).ratio, 0.5);
         assert!(!motion.moving(0.0));
     }
@@ -1527,7 +1362,16 @@ mod tests {
             .split(',')
             .map(|d| {
                 let done: usize = d.trim().parse().unwrap();
-                (format!("{done:03}"), done, (done < 50).then_some(0.6))
+                (
+                    format!("{done:03}"),
+                    done,
+                    (done < 50).then(|| {
+                        std::env::var("AP_PREVIEW_SWEEP")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0.6)
+                    }),
+                )
             })
             .collect();
         for (name, done, glow) in cases {
@@ -1540,14 +1384,14 @@ mod tests {
                     .unwrap();
             }
             let mut look = Look::of(Some(&plan));
-            look.glow = glow;
+            look.sweep = glow;
             let mut theme = SIGNAL;
             if let Ok(spec) = std::env::var("AP_PREVIEW_THEME") {
                 let c: Vec<Color> = spec
                     .split(',')
                     .map(|h| hex(Some(&serde_json::json!(h))).unwrap())
                     .collect();
-                (theme.track, theme.fill, theme.head, theme.glow) = (c[0], c[1], c[2], c[3]);
+                (theme.track, theme.fill, theme.glow) = (c[0], c[1], c[2]);
             }
             let mut terminal = Terminal::new(TestBackend::new(96, 7)).unwrap();
             terminal

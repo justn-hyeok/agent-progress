@@ -5,14 +5,12 @@
 - Rows by role: `지금 ›`, `막힘 ›`, `다음 ›`, `완료 ›`, dim `파일 ›` at the bottom; the
   duplicate "현재 계획 / 계획상 진행" pair is one line. Several items in progress at
   once are each shown in the warning colour. Labels use `›` so titles may contain `·`.
-- Arrow fill from 50% to below 100% (`->` arrowhead: two cells per row toward the middle, `0·2·4·2·0` cells,
-  two apex rows on even heights; the fill is the shaft), tip exactly at the progress edge, half-cell `▌`
-  tips only in blank cells, wide glyphs keep one background; flat fade below 50%,
-  solid at 100%.
-- Motion: the fill slides to its new position on completion, the arrow grows once
-  the shown fill passes half way, and the edge breathes only for `AP_IDLE_SECS`
-  (default 300, passed to the viewer as `--idle-secs`) after the last record; it
-  stops at 100% and on stale data. ~8 fps only while moving, 2 fps otherwise.
+- The fill fades widely into the track at the progress edge and is solid at 100%.
+- Motion: the fill slides to its new position on completion, and while the plan
+  was recorded within `AP_IDLE_SECS` (default 300, passed to the viewer as
+  `--idle-secs`) a soft band of light travels through the fill toward the edge,
+  fading with the gradient; it stops at 100% and on stale data. ~8 fps only
+  while moving, 2 fps otherwise. Light and arrow colours stay cool (no yellow).
 
 ## 3.2.0 — 2026-10-08
 

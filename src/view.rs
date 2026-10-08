@@ -1551,4 +1551,71 @@ mod tests {
             .unwrap();
         }
     }
+
+    /// `AP_RECORD_DIR=… cargo test record_frames -- --ignored` writes frames.jsonl: the
+    /// real renderer stepped through time while a 7-item plan completes every 2 s.
+    /// scripts/render_video.py turns it into a video.
+    #[test]
+    #[ignore]
+    fn record_frames() {
+        use std::io::Write as _;
+        let dir = std::path::PathBuf::from(std::env::var("AP_RECORD_DIR").unwrap());
+        let (width, height, fps) = (100u16, 7u16, 12.5);
+        let mut plan = Plan::new("t");
+        plan.goal = Some("agent-progress 3.3 데모".into());
+        for title in [
+            "요구사항 정리",
+            "저장소 설계",
+            "CLI 구현",
+            "진행 창 그리기",
+            "애니메이션",
+            "테스트",
+            "릴리즈",
+        ] {
+            plan.add(title).unwrap();
+        }
+        plan.set("1", State::Doing, None, None).unwrap();
+        let mut motion = Motion::snap(Some(&plan));
+        let mut out = std::fs::File::create(dir.join("frames.jsonl")).unwrap();
+        let (start, step, hold) = (1.5, 2.0, 3.0);
+        let end = start + step * 6.0 + hold;
+        let mut done = 0;
+        let mut frame = 0u32;
+        loop {
+            let t = f64::from(frame) / fps;
+            if t > end {
+                break;
+            }
+            while done < 7 && t >= start + step * f64::from(done) {
+                done += 1;
+                plan.set(&done.to_string(), State::Done, None, None)
+                    .unwrap();
+                if done < 7 {
+                    plan.set(&(done + 1).to_string(), State::Doing, None, None)
+                        .unwrap();
+                }
+                motion.update(t, Some(&plan));
+            }
+            let look = motion.look(t, true);
+            let terminal = render(&plan, width, height, &look);
+            let buffer = terminal.backend().buffer();
+            let rgb = |c: Color| match c {
+                Color::Rgb(r, g, b) => vec![r, g, b],
+                _ => vec![],
+            };
+            let cells: Vec<Vec<serde_json::Value>> = (0..height)
+                .map(|y| {
+                    (0..width)
+                        .map(|x| {
+                            let c = &buffer[(x, y)];
+                            serde_json::json!({"s": c.symbol(), "fg": rgb(c.fg), "bg": rgb(c.bg),
+                                "b": c.modifier.contains(Modifier::BOLD)})
+                        })
+                        .collect()
+                })
+                .collect();
+            writeln!(out, "{}", serde_json::to_string(&cells).unwrap()).unwrap();
+            frame += 1;
+        }
+    }
 }

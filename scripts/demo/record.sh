@@ -30,7 +30,9 @@ Sleep 700ms
 Show
 Sleep 30s
 TAPE
-(cd "$work" && env -u HERDR_ENV -u HERDR_PANE_ID -u TMUX -u TMUX_PANE vhs demo.tape)
+# VHS occasionally fails to start its browser; one retry is enough in practice.
+record() { (cd "$work" && env -u HERDR_ENV -u HERDR_PANE_ID -u TMUX -u TMUX_PANE vhs demo.tape); }
+record || { echo "retrying VHS once" >&2; record; }
 mkdir -p "$root/docs/media"
 cp "$work/progress.mp4" "$work/progress.gif" "$root/docs/media/"
 echo "docs/media/progress.mp4, docs/media/progress.gif"

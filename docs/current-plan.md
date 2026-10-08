@@ -50,6 +50,23 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+3.3.0 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.3.0 (Latest)
+Release commit a1ab9f3 passed Rust CI on main and branch (runs 37711178330,
+37711181048); archive SHA-256
+a09d892ae8dddc38bcc616a67fd3c62de6c75a604831681b7d2c1cfe3578286c (repack
+byte-identical, 3.2.0 → 3.3.0 upgrade/rollback smoke, downloaded asset matched).
+Formula passed Homebrew install and Rust CI; brew upgrade/test and ~/.local
+reinstall (a pre-review local 3.3.0 build was removed first) on this Mac.
+Progress pane redesign iterated with the user: role rows, wide gradient,
+completion slide, a travelling light that bends into `>` with a tail and slips
+past the edge, half-block pixels (AP_HALF_BLOCKS=0 opt-out), two-decimal
+percent, cool deep green theme. xhigh code review: 15 findings fixed (blocker
+first, one-row status, idle-secs, load errors, sweep continuity, snap on
+decrease, tick timing, real buffer tests, docs, script duplication). 57 tests.
+README rewritten around a real VHS recording (docs/media, scripts/demo).
+GitHub API was rate-limited during publication; CI was confirmed through the
+unauthenticated public API.
+
 3.2.0 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.2.0 (Latest)
 Release commit 18b2e45 passed Rust CI 37705669392; archive SHA-256
 103900b5ff6963cbea68a7d33d88b65863279496cc63ca0b924a397c6848194b (repack

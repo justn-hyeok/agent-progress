@@ -96,7 +96,7 @@ impl Plan {
 
     /// Whole-number percent: rounded, but 100 only when everything is done and at
     /// least 1 once anything is. None when there is nothing to count.
-    pub fn percent(&self) -> Option<usize> {
+    pub fn percent(&self) -> Option<String> {
         let (done, total) = self.progress();
         percent(done, total)
     }
@@ -182,14 +182,21 @@ impl Plan {
     }
 }
 
-pub fn percent(done: usize, total: usize) -> Option<usize> {
+/// Percent with up to two decimals: "50", "66.67". Rounded, but "100" only when
+/// everything is done and at least "0.01" once anything is. None when nothing counts.
+pub fn percent(done: usize, total: usize) -> Option<String> {
     if total == 0 {
         return None;
     }
-    Some(match done {
+    let hundredths = match done {
         0 => 0,
-        d if d >= total => 100,
-        d => ((d * 200 + total) / (2 * total)).clamp(1, 99),
+        d if d >= total => 10_000,
+        d => ((d * 20_000 + total) / (2 * total)).clamp(1, 9_999),
+    };
+    Some(if hundredths % 100 == 0 {
+        format!("{}", hundredths / 100)
+    } else {
+        format!("{}.{:02}", hundredths / 100, hundredths % 100)
     })
 }
 
@@ -379,14 +386,21 @@ mod tests {
     use super::percent;
 
     #[test]
-    fn percent_rounds_but_never_overstates_the_ends() {
-        assert_eq!(percent(0, 0), None);
-        assert_eq!(percent(2, 3), Some(67));
-        assert_eq!(percent(1, 3), Some(33));
-        assert_eq!(percent(1, 18), Some(6));
-        assert_eq!(percent(199, 200), Some(99), "not 100 before done");
-        assert_eq!(percent(1, 300), Some(1), "not 0 once started");
-        assert_eq!(percent(0, 27), Some(0));
-        assert_eq!(percent(27, 27), Some(100));
+    fn percent_has_two_decimals_but_never_overstates_the_ends() {
+        let p = |d, t| percent(d, t);
+        assert_eq!(p(0, 0), None);
+        assert_eq!(p(1, 2).as_deref(), Some("50"));
+        assert_eq!(p(2, 3).as_deref(), Some("66.67"));
+        assert_eq!(p(1, 3).as_deref(), Some("33.33"));
+        assert_eq!(p(1, 18).as_deref(), Some("5.56"));
+        assert_eq!(p(199, 200).as_deref(), Some("99.50"));
+        assert_eq!(
+            p(19_999, 20_000).as_deref(),
+            Some("99.99"),
+            "not 100 before done"
+        );
+        assert_eq!(p(1, 20_000).as_deref(), Some("0.01"), "not 0 once started");
+        assert_eq!(p(0, 27).as_deref(), Some("0"));
+        assert_eq!(p(27, 27).as_deref(), Some("100"));
     }
 }

@@ -337,18 +337,18 @@ fn close_outside_a_pane_reports_nothing_open() {
 }
 
 #[test]
-fn percent_is_a_rounded_whole_number_with_honest_ends() {
+fn percent_has_two_decimals_with_honest_ends() {
     let dir = tempfile::tempdir().unwrap();
     let titles: Vec<String> = (1..=18).map(|n| format!("t{n}")).collect();
     let mut args = vec!["add"];
     args.extend(titles.iter().map(String::as_str));
     ok(dir.path(), &args);
     ok(dir.path(), &["done", "1"]);
-    assert!(ok(dir.path(), &["status"]).contains("1/18 (6%)"));
+    assert!(ok(dir.path(), &["status"]).contains("1/18 (5.56%)"));
     for n in 2..=17 {
         ok(dir.path(), &["done", &n.to_string()]);
     }
-    assert!(ok(dir.path(), &["status"]).contains("17/18 (94%)"));
+    assert!(ok(dir.path(), &["status"]).contains("17/18 (94.44%)"));
     ok(dir.path(), &["done", "18"]);
     assert!(ok(dir.path(), &["status"]).contains("18/18 (100%)"));
 }

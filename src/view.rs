@@ -262,8 +262,13 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
     }
     let edge = look.ratio * width as f64;
     let ramp = (width as f64 * 0.35).clamp(6.0, 40.0).min(edge.max(1.0));
-    let band = (width as f64 * 0.12).clamp(4.0, 16.0);
     let half = height as f64 / 2.0;
+    // Size the light to the fill so the `>` fits even when only a little is done.
+    let band = (width as f64 * 0.12)
+        .clamp(4.0, 16.0)
+        .min(edge * 0.35)
+        .max(2.0);
+    let depth = (2.0 * half).min(edge * 0.35);
     (0..rows)
         .map(|py| {
             // Distance of this pixel row from the vertical middle, 0 (middle) to 1 (edge).
@@ -280,18 +285,20 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
                     let Some(phase) = look.sweep else {
                         return base;
                     };
-                    let bend = smooth((phase - 0.45) / 0.55);
-                    let lead = bend * 2.0 * half * (1.0 - from_middle);
-                    let at = phase * (edge + band) - band / 2.0 - 2.0 * half * bend + lead;
-                    let width_now = band * (1.0 - 0.45 * bend);
+                    // Straight at first, fully bent into `>` by mid-way, so the arrow is
+                    // what you see travelling and fading, not a straight band.
+                    let bend = smooth((phase - 0.15) / 0.4);
+                    let lead = bend * depth * (1.0 - from_middle);
+                    let at = phase * (edge + band) - band / 2.0 - depth * bend + lead;
+                    let width_now = band * (1.0 - 0.35 * bend);
                     let d = ((center - at) / (width_now / 2.0)).abs();
                     let light = if d < 1.0 {
                         0.5 + 0.5 * (std::f64::consts::PI * d).cos()
                     } else {
                         0.0
                     };
-                    let fade = 1.0 - smooth((phase - 0.7) / 0.3);
-                    mix(base, p.glow, 0.34 * light * fade * (0.3 + 0.7 * t))
+                    let fade = 1.0 - smooth((phase - 0.8) / 0.2);
+                    mix(base, p.glow, 0.38 * light * fade * (0.65 + 0.35 * t))
                 })
                 .collect()
         })
@@ -1238,7 +1245,7 @@ mod tests {
 
     #[test]
     fn light_is_a_straight_band_first_then_bends_into_an_arrow() {
-        let early = lift_by_row(0.3);
+        let early = lift_by_row(0.1);
         assert!(
             early.iter().all(|(x, _)| x.abs_diff(early[7].0) <= 1),
             "straight: {early:?}"
@@ -1250,6 +1257,50 @@ mod tests {
             "a > shape: {late:?}"
         );
         assert_eq!(late[0].0.abs_diff(late[13].0), 0, "symmetric");
+    }
+
+    fn lift_at(ratio: f64, phase: f64) -> Vec<(usize, u8)> {
+        let plain = pixels(&SIGNAL, &Look { ratio, sweep: None }, 100, 7);
+        let lit = pixels(
+            &SIGNAL,
+            &Look {
+                ratio,
+                sweep: Some(phase),
+            },
+            100,
+            7,
+        );
+        (0..14)
+            .map(|y| {
+                (0..100)
+                    .map(|x| (x, green(lit[y][x]).saturating_sub(green(plain[y][x]))))
+                    .max_by_key(|(_, l)| *l)
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_arrow_is_clearly_visible_before_it_fades_early_and_late() {
+        for ratio in [0.14, 0.43, 0.86] {
+            let straight = lift_at(ratio, 0.1).iter().map(|(_, l)| *l).max().unwrap();
+            let arrow = lift_at(ratio, 0.7);
+            let strength = arrow.iter().map(|(_, l)| *l).max().unwrap();
+            assert!(
+                u32::from(strength) * 10 >= u32::from(straight) * 7,
+                "{ratio}: bent light stays bright ({strength} vs {straight})"
+            );
+            assert!(
+                arrow[7].0 > arrow[0].0 + 1,
+                "{ratio}: bent into > : {arrow:?}"
+            );
+            assert!(
+                arrow
+                    .iter()
+                    .all(|(x, l)| *l == 0 || (*x as f64) < ratio * 100.0),
+                "{ratio}: inside the fill"
+            );
+        }
     }
 
     #[test]

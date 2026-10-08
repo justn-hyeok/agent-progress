@@ -277,19 +277,25 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
             (0..width)
                 .map(|x| {
                     let center = x as f64 + 0.5;
-                    if center > edge {
-                        return p.track;
-                    }
-                    let t = smooth((edge - center) / ramp);
+                    let t = if center > edge {
+                        0.0
+                    } else {
+                        smooth((edge - center) / ramp)
+                    };
                     let base = mix(p.track, p.fill, t);
                     let Some(phase) = look.sweep else {
                         return base;
                     };
+                    // The light may run a little past the edge so the arrow slips out and
+                    // melts away instead of being sliced by the straight edge.
+                    if center > edge + band {
+                        return base;
+                    }
                     // Straight at first, fully bent into `>` by mid-way, so the arrow is
                     // what you see travelling and fading, not a straight band.
                     let bend = smooth((phase - 0.15) / 0.4);
                     let lead = bend * depth * (1.0 - from_middle);
-                    let at = phase * (edge + band) - band / 2.0 - depth * bend + lead;
+                    let at = phase * (edge + 1.5 * band) - band / 2.0 - depth * bend + lead;
                     let width_now = band * (1.0 - 0.35 * bend);
                     let d = ((center - at) / (width_now / 2.0)).abs();
                     let light = if d < 1.0 {
@@ -297,7 +303,7 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
                     } else {
                         0.0
                     };
-                    let fade = 1.0 - smooth((phase - 0.8) / 0.2);
+                    let fade = 1.0 - smooth((phase - 0.72) / 0.28);
                     mix(base, p.glow, 0.38 * light * fade * (0.65 + 0.35 * t))
                 })
                 .collect()
@@ -1301,6 +1307,17 @@ mod tests {
                 "{ratio}: inside the fill"
             );
         }
+    }
+
+    #[test]
+    fn the_arrow_slips_past_the_edge_instead_of_being_cut() {
+        // Near the end the arrow tip is already beyond the edge while its arms are still
+        // inside, so no column at the edge slices it straight.
+        let rows = lift_at(0.6, 0.88);
+        let lit: Vec<_> = rows.iter().filter(|(_, l)| *l > 0).collect();
+        assert!(!lit.is_empty());
+        assert!(rows[7].0 > 60, "tip past the edge: {rows:?}");
+        assert!(rows[0].0 < rows[7].0, "still an arrow: {rows:?}");
     }
 
     #[test]

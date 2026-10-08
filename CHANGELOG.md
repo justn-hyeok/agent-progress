@@ -10,7 +10,7 @@
   was recorded within `AP_IDLE_SECS` (default 300, passed to the viewer as
   `--idle-secs`) a soft band of light travels through the fill toward the edge:
   straight at first, it bends into a `>` by mid-way (sized to the fill) and fades
-  out as it reaches the edge.
+  out as it slips a little past the edge (never sliced by it).
   When recording goes quiet the sweep under way finishes instead of vanishing.
   No light at 100% or on stale data; ~8 fps only while moving, 2 fps otherwise.
 - The bar is drawn at twice the vertical resolution: blank cells show two pixels

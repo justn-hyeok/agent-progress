@@ -9,6 +9,11 @@
   (backup kept). Only what `ap` installed is removed; foreign entries are left.
 - `.agent-progress/.gitignore` is created automatically, so plans are never
   committed in any project.
+- One progress viewer per source pane. Viewer state moved from plan files to a
+  per-pane state file (~/.local/state/agent-progress/panes); the viewer
+  follows the plan last changed from that pane, so work in several projects
+  (e.g. a repo and its worktree) switches one viewer instead of stacking new
+  ones. Older plan files with viewer fields still load.
 
 ## 3.1.0 — 2026-10-06
 

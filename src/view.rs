@@ -1,4 +1,7 @@
-use crate::store::{Item, Plan, State, Store};
+use crate::{
+    pane::Panes,
+    store::{Item, Plan, State, Store},
+};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -652,14 +655,27 @@ fn draw_panel(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, ui: &Ui, hist
     }
 }
 
-/// Run the viewer. `instance` is set for a viewer that `ap` opened automatically: it
-/// keeps a heartbeat, exits once the plan stops naming it, and its q dismisses
-/// automatic reopening. A manually started viewer (`ap view`) changes nothing on exit.
-pub fn watch(store: &Store, instance: Option<&str>) -> Result<()> {
-    let mut plan = store.load().ok().flatten();
-    let mut error: Option<String> = None;
-    let mut seen = mtime(store);
-    let source = store
+/// A manually started viewer (`ap view`): shows one plan file, changes nothing on exit.
+pub fn watch(store: &Store) -> Result<()> {
+    run(Store::at(store.path.clone()), None)
+}
+
+/// An automatic viewer: follows its pane's state file, switching to whatever plan that
+/// pane changed last, keeps a heartbeat, exits once the state stops naming `instance`,
+/// and records the user's dismissal on q.
+pub fn follow(panes: &Panes, instance: &str) -> Result<()> {
+    let Some(state) = panes.load() else {
+        return Ok(());
+    };
+    run(Store::at(state.plan), Some((panes, instance)))
+}
+
+fn file_mtime(path: &std::path::Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+fn source_label(store: &Store) -> String {
+    store
         .path
         .components()
         .rev()
@@ -669,22 +685,49 @@ pub fn watch(store: &Store, instance: Option<&str>) -> Result<()> {
         .rev()
         .collect::<std::path::PathBuf>()
         .display()
-        .to_string();
-    let colors = palette(store);
+        .to_string()
+}
+
+fn run(mut store: Store, follow: Option<(&Panes, &str)>) -> Result<()> {
+    let mut plan = store.load().ok().flatten();
+    let mut error: Option<String> = None;
+    let mut seen = mtime(&store);
+    let mut seen_pane = follow.and_then(|(panes, _)| file_mtime(&panes.path));
+    let mut source = source_label(&store);
+    let mut colors = palette(&store);
     let mut ui = Ui::default();
     let mut history: Vec<String> = Vec::new();
     let mut last_beat = Instant::now() - BEAT_EVERY;
     let mut terminal = ratatui::init();
     let result = (|| -> Result<bool> {
         loop {
-            if let Some(id) = instance
-                && last_beat.elapsed() >= BEAT_EVERY
-            {
-                store.beat(id)?;
-                last_beat = Instant::now();
+            if let Some((panes, id)) = follow {
+                if last_beat.elapsed() >= BEAT_EVERY {
+                    panes.beat(id)?;
+                    last_beat = Instant::now();
+                }
+                let now = file_mtime(&panes.path);
+                if now != seen_pane {
+                    seen_pane = now;
+                    if let Some(state) = panes.load() {
+                        // `ap close`, `ap open` or a newer viewer replaced us.
+                        if state.viewer.as_ref().is_none_or(|v| v.instance != id) {
+                            return Ok(false);
+                        }
+                        if state.plan != store.path {
+                            store = Store::at(state.plan);
+                            plan = store.load().ok().flatten();
+                            error = None;
+                            seen = mtime(&store);
+                            source = source_label(&store);
+                            colors = palette(&store);
+                            ui = Ui::default();
+                        }
+                    }
+                }
             }
             // Reload before handling input so a burst of keys never delays updates.
-            let current = mtime(store);
+            let current = mtime(&store);
             if current != seen {
                 seen = current;
                 match store.load() {
@@ -692,17 +735,11 @@ pub fn watch(store: &Store, instance: Option<&str>) -> Result<()> {
                         plan = p;
                         error = None;
                         if ui.mode == Mode::History {
-                            history = history_lines(store);
+                            history = history_lines(&store);
                         }
                     }
                     // Keep the last good plan visible and say it is stale.
                     Err(e) => error = Some(e.to_string()),
-                }
-                // `ap close`, `ap open` or a newer viewer replaced us.
-                if let (Some(id), Some(p)) = (instance, &plan)
-                    && p.viewer.as_ref().is_none_or(|v| v.instance != id)
-                {
-                    return Ok(false);
                 }
             }
             terminal.draw(|f| {
@@ -726,26 +763,26 @@ pub fn watch(store: &Store, instance: Option<&str>) -> Result<()> {
                     return Ok(true);
                 }
                 if ui.mode == Mode::History {
-                    history = history_lines(store);
+                    history = history_lines(&store);
                 }
             }
         }
     })();
     ratatui::restore();
-    if let Some(id) = instance {
-        store.clear_beat(id);
+    if let Some((panes, id)) = follow {
+        panes.clear_beat(id);
+        if result? {
+            // The user dismissed this pane's viewer: don't pop it back up.
+            panes.update(|s| {
+                if s.viewer.as_ref().is_some_and(|v| v.instance == id) {
+                    s.viewer = None;
+                    s.suppressed = true;
+                }
+            })?;
+        }
+        return Ok(());
     }
-    if result? && let (Some(id), Some(p)) = (instance, &plan) {
-        // The user dismissed this automatic viewer: don't pop it back up.
-        store.update(&p.key, "", |p| {
-            if p.viewer.as_ref().is_some_and(|v| v.instance == id) {
-                p.viewer = None;
-                p.view_suppressed = true;
-            }
-            Ok(())
-        })?;
-    }
-    Ok(())
+    result.map(drop)
 }
 
 #[cfg(test)]

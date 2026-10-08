@@ -71,11 +71,6 @@ pub struct Plan {
     pub next_id: u32,
     pub items: Vec<Item>,
     pub updated_at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub viewer: Option<Viewer>,
-    /// Set by `ap view close` or q in the viewer; stops automatic reopening.
-    #[serde(default)]
-    pub view_suppressed: bool,
 }
 
 impl Plan {
@@ -236,11 +231,7 @@ pub struct Store {
     pub path: PathBuf,
     lock: PathBuf,
     history: PathBuf,
-    heartbeat: PathBuf,
 }
-
-/// A running viewer refreshes this every few seconds; older than this means gone.
-const HEARTBEAT_STALE_SECS: u64 = 6;
 
 impl Store {
     pub fn new(root: &Path, key: &str) -> Self {
@@ -250,7 +241,6 @@ impl Store {
             path: dir.join(format!("{name}.json")),
             lock: dir.join(format!("{name}.lock")),
             history: dir.join(format!("{name}.history.jsonl")),
-            heartbeat: dir.join(format!("{name}.viewer.json")),
         }
     }
 
@@ -263,7 +253,6 @@ impl Store {
         Store {
             lock: path.with_file_name(format!("{stem}.lock")),
             history: path.with_file_name(format!("{stem}.history.jsonl")),
-            heartbeat: path.with_file_name(format!("{stem}.viewer.json")),
             path,
         }
     }
@@ -360,35 +349,6 @@ impl Store {
             }
         }
         unreachable!()
-    }
-
-    pub fn beat(&self, instance: &str) -> Result<()> {
-        let dir = self.heartbeat.parent().context("plan path")?;
-        let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
-        tmp.write_all(&serde_json::to_vec(
-            &serde_json::json!({"instance": instance, "at": now()}),
-        )?)?;
-        tmp.persist(&self.heartbeat)?;
-        Ok(())
-    }
-
-    pub fn clear_beat(&self, instance: &str) {
-        if self.beating(instance) {
-            let _ = fs::remove_file(&self.heartbeat);
-        }
-    }
-
-    /// The viewer with this instance refreshed its heartbeat recently.
-    pub fn beating(&self, instance: &str) -> bool {
-        !instance.is_empty()
-            && fs::read(&self.heartbeat)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-                .is_some_and(|v| {
-                    v["instance"] == instance
-                        && now().saturating_sub(v["at"].as_u64().unwrap_or(0))
-                            <= HEARTBEAT_STALE_SECS
-                })
     }
 
     pub fn history_path(&self) -> &Path {

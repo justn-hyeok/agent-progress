@@ -1,4 +1,5 @@
 mod herdr;
+mod pane;
 mod skill;
 mod store;
 mod tmux;
@@ -6,6 +7,7 @@ mod view;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use pane::{Decision, PaneState, Panes};
 use std::path::PathBuf;
 use store::{Plan, State, Store, Viewer};
 
@@ -76,6 +78,9 @@ enum Cmd {
         /// 자동으로 연 진행 창의 식별자 (내부용)
         #[arg(long, hide = true)]
         instance: Option<String>,
+        /// 진행 창이 따라갈 pane 상태 파일 (내부용)
+        #[arg(long, hide = true)]
+        pane_state: Option<PathBuf>,
     },
     /// 현재 pane 아래에 진행 창을 엽니다 (자동 열기 억제 해제)
     Open,
@@ -118,6 +123,8 @@ struct Ctx {
     source_pane: Option<String>,
     /// Terminal identity that must match the stored plan for pane-keyed plans.
     terminal: Option<String>,
+    /// The source pane's viewer state; one viewer per pane across all plans.
+    panes: Option<Panes>,
 }
 
 fn context(plan: Option<String>) -> Result<Ctx> {
@@ -162,6 +169,11 @@ fn context(plan: Option<String>) -> Result<Ctx> {
             "ap: 이 명령이 실행된 Herdr pane을 확인할 수 없어 진행 창을 자동으로 열지 않습니다. Codex라면 스레드 이름이 정해진 뒤(첫 응답 후) 다시 시도됩니다. 지금 계획은 다른 pane에서 `ap --plan {key} view`로 볼 수 있습니다"
         );
     }
+    let panes = match (host, &source_pane) {
+        (Host::Herdr, Some(p)) => Panes::for_source("herdr", p),
+        (Host::Tmux, Some(p)) => Panes::for_source("tmux", p),
+        _ => None,
+    };
     Ok(Ctx {
         store: Store::new(&root, &key),
         key,
@@ -169,6 +181,7 @@ fn context(plan: Option<String>) -> Result<Ctx> {
         host,
         source_pane,
         terminal,
+        panes,
     })
 }
 
@@ -178,13 +191,10 @@ impl Ctx {
         if let (Some(term), Some(existing)) = (&self.terminal, self.store.load()?)
             && existing.terminal_id.as_ref().is_some_and(|t| t != term)
         {
-            // A new terminal is a new session: its own viewer state starts fresh, but a
-            // still-running viewer watches the same path and stays attached.
-            let live = existing.viewer.filter(|v| self.store.beating(&v.instance));
+            // A new terminal is a new session: keep the old plan as an archive.
             self.store.archive()?;
             self.store
-                .update(&self.key, "new (pane reused by another terminal)", |p| {
-                    p.viewer = live;
+                .update(&self.key, "new (pane reused by another terminal)", |_| {
                     Ok(())
                 })?;
         }
@@ -197,70 +207,81 @@ impl Ctx {
         })
     }
 
-    /// Open the viewer under the caller pane unless one is already running or the user dismissed it.
-    fn ensure_view(&self, plan: &Plan, force: bool) -> Result<Option<String>> {
-        let Some(source) = &self.source_pane else {
+    /// Point this pane's viewer at the current plan, opening one under the caller pane
+    /// unless a viewer is already running for the pane or the user dismissed it.
+    fn ensure_view(&self, force: bool) -> Result<Option<String>> {
+        let (Some(source), Some(panes)) = (&self.source_pane, &self.panes) else {
             if force {
                 bail!("Herdr/tmux pane 밖입니다. 다른 터미널에서 `ap view`를 실행하세요");
             }
             return Ok(None);
         };
-        if !force && (plan.view_suppressed || std::env::var("AP_AUTO_OPEN").as_deref() == Ok("0")) {
-            return Ok(None);
+        let auto_open = std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0");
+        let mut prior = panes.load().unwrap_or_default();
+        if self.terminal.is_some() && prior.terminal_id != self.terminal {
+            prior = PaneState::default();
         }
-        if let Some(viewer) = &plan.viewer {
-            // q and `ap close` clear the record, so a recorded viewer that stopped beating
-            // was closed from outside (e.g. Herdr's own close). Respect that like q.
-            if self.store.beating(&viewer.instance) || !force {
-                return Ok(None);
+        let alive = prior
+            .viewer
+            .as_ref()
+            .is_some_and(|v| panes.beating(&v.instance));
+        let decision = pane::decide(&prior, alive, force, auto_open);
+        let instance = (decision == Decision::Launch).then(new_instance);
+        let terminal = self.terminal.clone();
+        let plan_path = self.store.path.clone();
+        // Always point the pane at the plan just changed; a live viewer switches to it.
+        // When launching, record the instance first: a viewer exits once the pane state
+        // stops naming it.
+        panes.update(|s| {
+            if terminal.is_some() && s.terminal_id != terminal {
+                *s = PaneState::default();
+                s.terminal_id = terminal.clone();
             }
-        }
-        if matches!(self.host, Host::None) {
+            s.plan = plan_path;
+            if let Some(id) = &instance {
+                s.viewer = Some(Viewer {
+                    instance: id.clone(),
+                    ..Viewer::default()
+                });
+                s.suppressed = false;
+            }
+        })?;
+        let Some(instance) = instance else {
             return Ok(None);
-        }
+        };
         let size: u8 = std::env::var("AP_PANE_SIZE")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(10);
-        let instance = new_instance();
-        let command = viewer_command(&self.store.path, &instance)?;
-        // Record first: the viewer exits as soon as it sees a plan that doesn't name it.
-        self.store.update(&self.key, "", |p| {
-            p.viewer = Some(Viewer {
-                instance: instance.clone(),
-                ..Viewer::default()
-            });
-            p.view_suppressed = false;
-            Ok(())
-        })?;
+        let command = viewer_command(&panes.path, &instance)?;
         let launched = match self.host {
             Host::Herdr => match herdr::idle_pane_below(source) {
                 Some(pane) => herdr::run_in(&pane, &command, &instance),
                 None => herdr::open_below(source, &self.root, &command, &instance, size),
             },
             Host::Tmux => tmux::open_below(source, &self.root, &command, &instance, size),
-            Host::None => unreachable!(),
+            Host::None => unreachable!("panes exist only for a known host"),
         };
-        let viewer = match launched {
-            Ok(v) => v,
-            Err(e) => {
-                self.store.update(&self.key, "", |p| {
-                    if p.viewer.as_ref().is_some_and(|v| v.instance == instance) {
-                        p.viewer = None;
+        let mine = |s: &PaneState| s.viewer.as_ref().is_some_and(|v| v.instance == instance);
+        match launched {
+            Ok(viewer) => {
+                let pane = viewer.pane.clone();
+                panes.update(|s| {
+                    if mine(s) {
+                        s.viewer = Some(viewer);
                     }
-                    Ok(())
                 })?;
-                return Err(e);
+                Ok(Some(pane))
             }
-        };
-        let pane = viewer.pane.clone();
-        self.store.update(&self.key, "", |p| {
-            if p.viewer.as_ref().is_some_and(|v| v.instance == instance) {
-                p.viewer = Some(viewer);
+            Err(e) => {
+                panes.update(|s| {
+                    if mine(s) {
+                        s.viewer = None;
+                    }
+                })?;
+                Err(e)
             }
-            Ok(())
-        })?;
-        Ok(Some(pane))
+        }
     }
 }
 
@@ -277,12 +298,12 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// Run this exact binary; a bare `ap` could resolve to another installed version.
-fn viewer_command(plan_file: &std::path::Path, instance: &str) -> Result<String> {
+fn viewer_command(pane_state: &std::path::Path, instance: &str) -> Result<String> {
     let exe = std::env::current_exe()?;
     Ok(format!(
-        "{} view --file {} --instance {}",
+        "{} view --pane-state {} --instance {}",
         shell_quote(exe.to_str().context("binary path encoding")?),
-        shell_quote(plan_file.to_str().context("plan path encoding")?),
+        shell_quote(pane_state.to_str().context("state path encoding")?),
         shell_quote(instance)
     ))
 }
@@ -305,19 +326,25 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    // A viewer launched on an explicit file needs no pane resolution.
+    // Viewers launched on an explicit file or pane state need no pane resolution.
     if let Some(Cmd::View {
-        file: Some(file),
+        file,
         once,
         instance,
+        pane_state,
     }) = &cli.command
     {
-        let store = Store::at(file.clone());
-        if *once {
-            println!("{}", view::summary(store.load()?.as_ref()));
-            return Ok(());
+        if let (Some(state), Some(id)) = (pane_state, instance) {
+            return view::follow(&Panes::at(state.clone()), id);
         }
-        return view::watch(&store, instance.as_deref());
+        if let Some(file) = file {
+            let store = Store::at(file.clone());
+            if *once {
+                println!("{}", view::summary(store.load()?.as_ref()));
+                return Ok(());
+            }
+            return view::watch(&store);
+        }
     }
     if let Some(Cmd::Skill { action }) = &cli.command {
         let report = match action {
@@ -384,21 +411,9 @@ fn run() -> Result<()> {
                 .0
         }
         Cmd::New => {
-            // The running viewer and the user's dismissal both belong to this pane, not
-            // to the archived plan.
-            let old = ctx.store.load()?;
-            let viewer = old
-                .as_ref()
-                .and_then(|p| p.viewer.clone())
-                .filter(|v| ctx.store.beating(&v.instance));
-            let suppressed = old.as_ref().is_some_and(|p| p.view_suppressed);
+            // The pane's viewer keeps watching the same path and shows the fresh plan.
             ctx.store.archive()?;
-            ctx.update("new", |p| {
-                p.viewer = viewer;
-                p.view_suppressed = suppressed;
-                Ok(())
-            })?
-            .0
+            ctx.update("new", |_| Ok(()))?.0
         }
         Cmd::Status { json } => {
             let plan = ctx.store.load()?;
@@ -422,14 +437,10 @@ fn run() -> Result<()> {
                 println!("{}", view::summary(ctx.store.load()?.as_ref()));
                 return Ok(());
             }
-            return view::watch(&ctx.store, None);
+            return view::watch(&ctx.store);
         }
         Cmd::Open => {
-            let (plan, _) = ctx.update("", |p| {
-                p.view_suppressed = false;
-                Ok(())
-            })?;
-            match ctx.ensure_view(&plan, true)? {
+            match ctx.ensure_view(true)? {
                 Some(pane) => println!("진행 창: {pane}"),
                 None => println!("진행 창이 이미 열려 있습니다"),
             }
@@ -437,24 +448,25 @@ fn run() -> Result<()> {
         }
         Cmd::Skill { .. } => unreachable!("handled before pane resolution"),
         Cmd::Close => {
-            let plan = ctx.store.load()?.context("이 계획이 없습니다")?;
-            let running = plan
-                .viewer
-                .as_ref()
-                .filter(|v| ctx.store.beating(&v.instance))
-                .cloned();
-            // The viewer exits by itself once the plan no longer names it.
-            ctx.update("", |p| {
-                p.viewer = None;
-                p.view_suppressed = true;
-                Ok(())
+            let Some(panes) = &ctx.panes else {
+                println!("열린 진행 창이 없습니다");
+                return Ok(());
+            };
+            let running = panes
+                .load()
+                .and_then(|s| s.viewer)
+                .filter(|v| panes.beating(&v.instance));
+            // The viewer exits by itself once the pane state no longer names it.
+            panes.update(|s| {
+                s.viewer = None;
+                s.suppressed = true;
             })?;
             let message = match running {
                 None => "열린 진행 창이 없습니다",
                 Some(v) => {
                     let stopped = (0..30).any(|_| {
                         std::thread::sleep(std::time::Duration::from_millis(100));
-                        !ctx.store.beating(&v.instance)
+                        !panes.beating(&v.instance)
                     });
                     if stopped {
                         "진행 창을 닫았습니다"
@@ -470,7 +482,7 @@ fn run() -> Result<()> {
     print_plan(&plan);
     if !cli.no_view {
         // Display failure never undoes the recorded change.
-        match ctx.ensure_view(&plan, false) {
+        match ctx.ensure_view(false) {
             Ok(Some(pane)) => println!("진행 창: {pane}"),
             Ok(None) => {}
             Err(e) => eprintln!("ap: 기록은 저장됨, 진행 창 열기 실패: {e:#}"),

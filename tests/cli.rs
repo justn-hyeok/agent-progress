@@ -254,74 +254,6 @@ fn blank_block_reason_is_rejected() {
 }
 
 #[test]
-fn new_keeps_users_dismissal() {
-    let dir = tempfile::tempdir().unwrap();
-    ok(dir.path(), &["add", "a"]);
-    let file = plans_dir(dir.path()).join("default.json");
-    let mut plan: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    plan["view_suppressed"] = true.into();
-    std::fs::write(&file, plan.to_string()).unwrap();
-    ok(dir.path(), &["new"]);
-    assert_eq!(json(dir.path())["view_suppressed"], true);
-}
-
-#[test]
-fn close_with_dead_viewer_record_reports_nothing_open() {
-    let dir = tempfile::tempdir().unwrap();
-    ok(dir.path(), &["add", "a"]);
-    let file = plans_dir(dir.path()).join("default.json");
-    let mut plan: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    plan["viewer"] = serde_json::json!({"instance": "gone", "pane": "%9"});
-    std::fs::write(&file, plan.to_string()).unwrap();
-    assert!(ok(dir.path(), &["close"]).contains("열린 진행 창이 없습니다"));
-    let after = json(dir.path());
-    assert!(after.get("viewer").is_none());
-    assert_eq!(after["view_suppressed"], true);
-}
-
-#[test]
-fn close_stops_a_live_viewer_through_the_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    ok(dir.path(), &["add", "a"]);
-    let plans = plans_dir(dir.path());
-    let file = plans.join("default.json");
-    let mut plan: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    plan["viewer"] = serde_json::json!({"instance": "live-1", "pane": "%9"});
-    std::fs::write(&file, plan.to_string()).unwrap();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let beat = plans.join("default.viewer.json");
-    std::fs::write(
-        &beat,
-        serde_json::json!({"instance": "live-1", "at": now}).to_string(),
-    )
-    .unwrap();
-    // Simulate the viewer noticing the plan no longer names it and exiting.
-    let watcher = {
-        let file = file.clone();
-        std::thread::spawn(move || {
-            for _ in 0..50 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                let p: serde_json::Value =
-                    serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-                if p.get("viewer").is_none() {
-                    std::fs::remove_file(&beat).unwrap();
-                    return true;
-                }
-            }
-            false
-        })
-    };
-    assert!(ok(dir.path(), &["close"]).contains("진행 창을 닫았습니다"));
-    assert!(watcher.join().unwrap());
-}
-
-#[test]
 fn closed_output_pipe_does_not_panic() {
     use std::io::Read;
     let dir = tempfile::tempdir().unwrap();
@@ -376,4 +308,30 @@ fn plan_folder_is_ignored_by_git() {
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
+}
+
+#[test]
+fn pre_3_2_plan_with_viewer_fields_still_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    let file = plans_dir(dir.path()).join("default.json");
+    let mut plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    plan["viewer"] = serde_json::json!({"instance": "old", "pane": "w1:p9", "reused": true});
+    plan["view_suppressed"] = true.into();
+    std::fs::write(&file, plan.to_string()).unwrap();
+    ok(dir.path(), &["done", "1"]);
+    let after = json(dir.path());
+    assert_eq!(after["items"][0]["state"], "done");
+    assert!(
+        after.get("viewer").is_none(),
+        "viewer state is no longer kept in plans"
+    );
+}
+
+#[test]
+fn close_outside_a_pane_reports_nothing_open() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["add", "a"]);
+    assert!(ok(dir.path(), &["close"]).contains("열린 진행 창이 없습니다"));
 }

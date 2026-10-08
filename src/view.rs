@@ -114,16 +114,226 @@ fn ellipsize(text: &str, width: usize) -> String {
     out
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Kind {
-    Status,
-    Caption,
-    CaptionBold,
-    Path,
-    Muted,
+/// How the bar looks at one instant: the displayed ratio (may lag the plan while
+/// sliding), the arrow scale (0 = flat edge, 1 = full arrow) and the edge glow.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Look {
+    pub ratio: f64,
+    pub arrow: f64,
+    pub glow: Option<f64>,
 }
 
-fn draw(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, error: Option<&str>, source: &str) {
+impl Look {
+    /// Static look for a plan: no motion, arrow from 50% up to (not including) 100%.
+    pub fn of(plan: Option<&Plan>) -> Self {
+        let (done, total) = plan.map_or((0, 0), Plan::progress);
+        Look {
+            ratio: ratio(done, total),
+            arrow: arrow_target(done, total),
+            glow: None,
+        }
+    }
+}
+
+/// A value easing from `from` to `to` over `dur` seconds starting at `start`.
+#[derive(Clone, Copy, Debug)]
+struct Tween {
+    from: f64,
+    to: f64,
+    start: f64,
+    dur: f64,
+}
+
+impl Tween {
+    fn snap(v: f64) -> Self {
+        Tween {
+            from: v,
+            to: v,
+            start: 0.0,
+            dur: 0.0,
+        }
+    }
+
+    fn at(&self, t: f64) -> f64 {
+        if self.dur <= 0.0 || t >= self.start + self.dur {
+            return self.to;
+        }
+        let x = ((t - self.start) / self.dur).clamp(0.0, 1.0);
+        // Ease-out: quick start, gentle arrival.
+        self.from + (self.to - self.from) * (1.0 - (1.0 - x).powi(3))
+    }
+
+    /// Head for `to` from wherever the value is now, so rapid updates never jump.
+    fn retarget(&mut self, t: f64, to: f64, dur: f64) {
+        if (to - self.to).abs() > 1e-9 {
+            *self = Tween {
+                from: self.at(t),
+                to,
+                start: t,
+                dur,
+            };
+        }
+    }
+
+    fn moving(&self, t: f64) -> bool {
+        self.dur > 0.0 && t < self.start + self.dur
+    }
+}
+
+const SLIDE_SECS: f64 = 0.6;
+const ARROW_SECS: f64 = 0.45;
+const BREATH_SECS: f64 = 2.4;
+
+/// One-shot transitions plus the idle "recent record" breathing, as a pure function of
+/// time so it can be tested without sleeping.
+#[derive(Clone, Copy, Debug)]
+pub struct Motion {
+    ratio: Tween,
+    arrow: Tween,
+    arrow_goal: f64,
+}
+
+impl Motion {
+    /// No transition: first load, or the viewer switched to another plan.
+    pub fn snap(plan: Option<&Plan>) -> Self {
+        let look = Look::of(plan);
+        Motion {
+            ratio: Tween::snap(look.ratio),
+            arrow: Tween::snap(look.arrow),
+            arrow_goal: look.arrow,
+        }
+    }
+
+    /// The same plan changed: slide the fill from where it is shown now.
+    pub fn update(&mut self, t: f64, plan: Option<&Plan>) {
+        let look = Look::of(plan);
+        self.ratio.retarget(t, look.ratio, SLIDE_SECS);
+        self.arrow_goal = look.arrow;
+    }
+
+    /// Look at time `t`. The arrow grows once the shown fill reaches half way, and
+    /// shrinks as soon as it is no longer wanted. `breathe` lets the edge glow.
+    pub fn look(&mut self, t: f64, breathe: bool) -> Look {
+        let ratio = self.ratio.at(t);
+        let want = if self.arrow_goal > 0.0 && ratio >= 0.5 {
+            1.0
+        } else {
+            0.0
+        };
+        self.arrow.retarget(t, want, ARROW_SECS);
+        let settled = (ratio - self.ratio.to).abs() < 1e-9;
+        Look {
+            ratio,
+            arrow: self.arrow.at(t),
+            glow: (breathe && ratio > 0.0 && ratio < 1.0 && settled)
+                .then(|| 0.5 - 0.5 * (std::f64::consts::TAU * t / BREATH_SECS).cos()),
+        }
+    }
+
+    pub fn moving(&self, t: f64) -> bool {
+        self.ratio.moving(t) || self.arrow.moving(t)
+    }
+}
+
+fn ratio(done: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        done as f64 / total as f64
+    }
+}
+
+/// The arrow appears from half way (integer test, no float edge cases) until done.
+fn arrow_target(done: usize, total: usize) -> f64 {
+    if total > 0 && done * 2 >= total && done < total {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// Arrow protrusion per row: grows toward the middle by one cell per row, capped at 2
+/// (`0·1·2·1·0` for five rows, two apex rows on even heights).
+fn arrow_offsets(height: usize) -> Vec<usize> {
+    (0..height)
+        .map(|r| r.min(height.saturating_sub(1) - r).min(2))
+        .collect()
+}
+
+fn smooth(t: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Per-cell backgrounds (row-major) and per-row optional half-cell tip (column, colour).
+type Fill = (Vec<Vec<Color>>, Vec<Option<(usize, Color)>>);
+
+/// Background per cell (row-major) and, per row, an optional half-cell tip `▌` with its
+/// colour. The arrow tip sits exactly at the progress edge; outer rows are pulled back.
+fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
+    if look.ratio <= 0.0 || width == 0 {
+        return (vec![vec![p.track; width]; height], vec![None; height]);
+    }
+    if look.ratio >= 1.0 {
+        return (vec![vec![p.fill; width]; height], vec![None; height]);
+    }
+    let edge = look.ratio * width as f64;
+    let offsets = arrow_offsets(height);
+    let peak = offsets.iter().copied().max().unwrap_or(0) as f64;
+    let glow_color = mix(p.fill, p.accent, 0.45);
+    let soft = mix(p.track, p.fill, 0.8);
+    let mut rows = Vec::with_capacity(height);
+    let mut tips = Vec::with_capacity(height);
+    for off in offsets {
+        let row_edge = (edge - (peak - off as f64) * look.arrow).max(0.0);
+        let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(row_edge.max(1.0));
+        let colour_at = |center: f64| {
+            let t = smooth((row_edge - center) / ramp);
+            // Flat edge: fade into the track. Arrow: a subtle fade kept inside the fill.
+            let flat = mix(p.track, p.fill, t);
+            let inner = mix(soft, p.fill, t);
+            mix(flat, inner, look.arrow)
+        };
+        let last = row_edge.floor() as usize;
+        let mut row: Vec<Color> = (0..width)
+            .map(|x| {
+                if (x as f64) + 1.0 <= row_edge {
+                    colour_at(x as f64 + 0.5)
+                } else {
+                    p.track
+                }
+            })
+            .collect();
+        let frac = row_edge - row_edge.floor();
+        let mut tip = (frac >= 0.5 && last < width).then(|| (last, colour_at(row_edge - 0.25)));
+        if let Some(g) = look.glow {
+            let lift = |c: Color| mix(c, glow_color, 0.5 * g);
+            if last > 0 && last <= width {
+                row[last - 1] = lift(row[last - 1]);
+            }
+            tip = tip.map(|(x, c)| (x, lift(c)));
+        }
+        rows.push(row);
+        tips.push(tip);
+    }
+    (rows, tips)
+}
+
+fn field(label: &str, value: String, value_style: Style, p: &Palette) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{label} › "), Style::new().fg(p.muted)),
+        Span::styled(value, value_style),
+    ])
+}
+
+fn draw(
+    frame: &mut Frame,
+    p: &Palette,
+    plan: Option<&Plan>,
+    error: Option<&str>,
+    source: &str,
+    look: &Look,
+) {
     let area = frame.area();
     if area.is_empty() {
         return;
@@ -132,156 +342,193 @@ fn draw(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, error: Option<&str>
     let plan = plan.unwrap_or(&empty);
     let (done, total) = plan.progress();
     let goal = plan.goal.as_deref().unwrap_or("목표 미정");
-    let doing = plan.items.iter().find(|i| i.state == State::Doing);
-    let blocked = plan.items.iter().find(|i| i.state == State::Blocked);
+    let doing: Vec<_> = plan
+        .items
+        .iter()
+        .filter(|i| i.state == State::Doing)
+        .collect();
+    let blocked: Vec<_> = plan
+        .items
+        .iter()
+        .filter(|i| i.state == State::Blocked)
+        .collect();
     let next = plan.items.iter().find(|i| i.state == State::Todo);
     let last_done = plan.last_done();
-
-    let (status, warn) = if let Some(error) = error {
-        (format!("오래된 상태 · {error}"), true)
-    } else if let Some(b) = blocked {
-        let mut s = format!(
-            "! {} · {}",
-            b.title,
-            b.reason.as_deref().unwrap_or("막힌 이유 확인")
-        );
-        if let Some(needs) = &b.needs {
-            s.push_str(&format!(" · 필요: {needs}"));
-        }
-        (s, true)
-    } else if total == 0 {
-        ("계획 대기".into(), false)
-    } else if done == total {
-        ("✓ 완료".into(), false)
-    } else if let Some(d) = doing {
-        (format!("계획상 진행 · {}", d.title), false)
-    } else {
-        (
-            format!("다음 · {}", next.map_or("계획 갱신", |n| n.title.as_str())),
-            false,
-        )
-    };
-    let metric = (done * 100)
-        .checked_div(total)
-        .map(|pct| format!("{pct}% · {done}/{total}"))
-        .unwrap_or_else(|| "체크율 미정".into());
-    let plan_line = match doing {
-        Some(d) => format!("현재 계획  ·  {}", d.title),
-        None => format!("현재 계획  ·  {goal}"),
-    };
-    let context = if warn || done == total {
-        last_done.map(|i| format!("마지막 완료 · {}", i.title))
-    } else {
-        next.filter(|_| doing.is_some())
-            .map(|i| format!("다음 · {}", i.title))
-            .or_else(|| last_done.map(|i| format!("마지막 완료 · {}", i.title)))
-    };
-
     let pad = if area.width >= 24 {
         2
     } else {
         u16::from(area.width > 4)
     };
     let width = area.width.saturating_sub(pad * 2).min(110);
-    let mut lines: Vec<(String, Kind)> = Vec::new();
-    if area.height == 1 {
-        lines.push((format!("{metric} · {status} · {goal}"), Kind::Status));
+    let metric = (done * 100)
+        .checked_div(total)
+        .map(|pct| format!("{pct}% · {done}/{total}"))
+        .unwrap_or_else(|| "체크율 미정".into());
+
+    // Middle rows by priority: where we are (or what is stuck), then next, then last done.
+    let warn = Style::new().fg(p.warning).add_modifier(Modifier::BOLD);
+    let mut middle: Vec<Line> = Vec::new();
+    if let Some(error) = error {
+        middle.push(field("오래됨", error.to_string(), warn, p));
+    }
+    // Two items in progress at once means the plan and the work disagree: show each.
+    let now_style = if doing.len() > 1 {
+        warn
     } else {
-        lines.push((String::new(), Kind::Muted)); // header, drawn below
-        if area.height >= 4 {
-            lines.push((plan_line, Kind::CaptionBold));
+        Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
+    };
+    for item in &doing {
+        middle.push(field("지금", item.title.clone(), now_style, p));
+    }
+    for item in &blocked {
+        let mut text = format!(
+            "{} — {}",
+            item.title,
+            item.reason.as_deref().unwrap_or("막힌 이유 확인")
+        );
+        if let Some(needs) = &item.needs {
+            text.push_str(&format!(" (필요: {needs})"));
         }
-        lines.push((status.clone(), Kind::Status));
-        if area.height >= 5
-            && let Some(c) = context
-        {
-            lines.push((c, Kind::Caption));
-        }
-        lines.push((format!("계획 · {source}"), Kind::Path));
-        if area.height >= 8 && total > 0 {
-            lines.push((
-                format!("체크리스트 · {done}/{total} 완료 · 에이전트 보고 기준"),
-                Kind::Muted,
+        middle.push(field("막힘", text, warn, p));
+    }
+    if doing.is_empty() && blocked.is_empty() {
+        if total == 0 {
+            middle.push(Line::styled("계획 대기", Style::new().fg(p.muted)));
+        } else if done == total {
+            middle.push(Line::styled(
+                "✓ 완료",
+                Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
             ));
-            for item in &plan.items {
+        }
+    }
+    if let Some(item) = next {
+        middle.push(field(
+            "다음",
+            item.title.clone(),
+            Style::new().fg(p.text),
+            p,
+        ));
+    }
+    if let Some(item) = last_done {
+        middle.push(field(
+            "완료",
+            item.title.clone(),
+            Style::new().fg(p.muted),
+            p,
+        ));
+    }
+
+    let rect = |row: u16| Rect {
+        x: area.x + pad,
+        y: area.y + row,
+        width,
+        height: 1,
+    };
+    let clip = |line: Line<'static>| -> Line<'static> {
+        // Shorten the value span so the label always stays visible.
+        let label_width: usize = line.spans.iter().take(1).map(|s| s.content.width()).sum();
+        let mut spans = line.spans;
+        if spans.len() == 2 {
+            let room = (width as usize).saturating_sub(label_width);
+            let value = ellipsize(&spans[1].content, room);
+            spans[1] = Span::styled(value, spans[1].style);
+        } else if let Some(only) = spans.first_mut() {
+            *only = Span::styled(ellipsize(&only.content, width as usize), only.style);
+        }
+        Line::from(spans)
+    };
+    if area.height == 1 {
+        let now = doing
+            .first()
+            .map(|i| format!("지금 › {}", i.title))
+            .unwrap_or_default();
+        let line = Line::styled(format!("{metric}  {now}"), Style::new().fg(p.text));
+        frame.render_widget(Paragraph::new(clip(line)), rect(0));
+    } else {
+        let header_goal = if error.is_some() {
+            format!("오래된 상태 · {goal}")
+        } else {
+            goal.to_string()
+        };
+        let (pct, counts) = metric
+            .split_once(" · ")
+            .map_or((metric.as_str(), None), |(a, b)| (a, Some(b)));
+        let left = width.saturating_sub(metric.width() as u16 + 2) as usize;
+        let mut spans = vec![
+            Span::styled(
+                ellipsize(&header_goal, left),
+                Style::new().fg(p.text).bold(),
+            ),
+            Span::raw("  "),
+            Span::styled(pct.to_string(), Style::new().fg(p.accent).bold()),
+        ];
+        if let Some(counts) = counts {
+            spans.push(Span::styled(
+                format!(" · {counts}"),
+                Style::new().fg(p.muted),
+            ));
+        }
+        frame.render_widget(Paragraph::new(Line::from(spans)), rect(0));
+        // The file path stays dim on the bottom row; the middle fills what is left.
+        let file_row = (area.height >= 3).then(|| area.height - 1);
+        let middle_rows = file_row.unwrap_or(area.height) - 1;
+        let mut rows: Vec<Line> = middle;
+        if area.height >= 8 && total > 0 {
+            rows.push(Line::styled(
+                format!("체크리스트 › {done}/{total} 완료 · 에이전트 보고 기준"),
+                Style::new().fg(p.muted),
+            ));
+            rows.extend(plan.items.iter().map(|item| {
                 let mut s = format!("{} {}", item.state.mark(), item.title);
                 if let Some(r) = &item.reason {
                     s.push_str(&format!(" — {r}"));
                 }
-                lines.push((s, Kind::Muted));
-            }
+                Line::styled(s, Style::new().fg(p.muted))
+            }));
+        }
+        for (i, line) in rows.into_iter().take(middle_rows as usize).enumerate() {
+            frame.render_widget(Paragraph::new(clip(line)), rect(1 + i as u16));
+        }
+        if let Some(row) = file_row {
+            let line = field("파일", source.to_string(), Style::new().fg(p.metadata), p);
+            frame.render_widget(Paragraph::new(clip(line)), rect(row));
         }
     }
+    paint(frame, p, look);
+}
 
-    let header_goal = if error.is_some() {
-        format!("오래된 상태 · {goal}")
-    } else {
-        goal.to_string()
-    };
-    for (i, (text, kind)) in lines.iter().take(area.height as usize).enumerate() {
-        let rect = Rect {
-            x: area.x + pad,
-            y: area.y + i as u16,
-            width,
-            height: 1,
-        };
-        if i == 0 && area.height > 1 {
-            let (pct, counts) = metric
-                .split_once(" · ")
-                .map_or((metric.as_str(), None), |(a, b)| (a, Some(b)));
-            let metric_width = metric.width() as u16;
-            let left = width.saturating_sub(metric_width + 2) as usize;
-            let mut spans = vec![
-                Span::styled(
-                    ellipsize(&header_goal, left),
-                    Style::new().fg(p.text).bold(),
-                ),
-                Span::raw("  "),
-                Span::styled(pct.to_string(), Style::new().fg(p.accent).bold()),
-            ];
-            if let Some(counts) = counts {
-                spans.push(Span::styled(
-                    format!(" · {counts}"),
-                    Style::new().fg(p.muted),
-                ));
+/// Paint the bar under the text. A half-cell tip goes only into a truly blank cell, and
+/// both halves of a wide (e.g. Korean) glyph keep one background so it stays legible.
+fn paint(frame: &mut Frame, p: &Palette, look: &Look) {
+    let area = frame.area();
+    let (rows, tips) = fill_cells(p, look, usize::from(area.width), usize::from(area.height));
+    let buf = frame.buffer_mut();
+    for (r, row) in rows.iter().enumerate() {
+        let y = area.y + r as u16;
+        let mut wide_prev = false;
+        for (c, bg) in row.iter().enumerate() {
+            let x = area.x + c as u16;
+            let cell = &mut buf[(x, y)];
+            if wide_prev {
+                // Continuation half of the previous glyph: match its background.
+                let prev_bg = row[c - 1];
+                cell.bg = prev_bg;
+                wide_prev = false;
+                continue;
             }
-            frame.render_widget(Paragraph::new(Line::from(spans)), rect);
-            continue;
+            cell.bg = *bg;
+            wide_prev = cell.symbol().width() == 2;
         }
-        let clipped = ellipsize(text, width as usize);
-        let line = match kind {
-            Kind::Caption | Kind::CaptionBold => match clipped.split_once('·') {
-                Some((caption, value)) => {
-                    let value_style = if *kind == Kind::CaptionBold {
-                        Style::new().fg(p.text).bold()
-                    } else {
-                        Style::new().fg(p.text)
-                    };
-                    Line::from(vec![
-                        Span::styled(
-                            format!("{} ·", caption.trim_end()),
-                            Style::new().fg(p.muted),
-                        ),
-                        Span::styled(value.to_string(), value_style),
-                    ])
-                }
-                None => Line::styled(clipped, Style::new().fg(p.text)),
-            },
-            Kind::Status => Line::styled(
-                clipped,
-                Style::new()
-                    .fg(if warn { p.warning } else { p.accent })
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Kind::Path => Line::styled(clipped, Style::new().fg(p.metadata)),
-            Kind::Muted => Line::styled(clipped, Style::new().fg(p.muted)),
-        };
-        frame.render_widget(Paragraph::new(line), rect);
-    }
-    // The whole pane is the track; paint after text so wide-character cells keep it.
-    for (i, bg) in fill_row(p, done, total, area.width).into_iter().enumerate() {
-        for y in area.y..area.bottom() {
-            frame.buffer_mut()[(area.x + i as u16, y)].bg = bg;
+        if let Some((c, colour)) = tips[r] {
+            let x = area.x + c as u16;
+            let blank = buf[(x, y)].symbol() == " ";
+            let after_wide = c > 0 && buf[(x - 1, y)].symbol().width() == 2;
+            if blank && !after_wide {
+                let cell = &mut buf[(x, y)];
+                cell.set_symbol("▌");
+                cell.fg = colour;
+                cell.bg = p.track;
+            }
         }
     }
 }
@@ -295,28 +542,6 @@ fn mix(a: Color, b: Color, t: f64) -> Color {
         _ if t < 0.5 => a,
         _ => b,
     }
-}
-
-/// Background per column: solid fill, then a soft fade into the track that ends
-/// exactly at the progress position. 0% and 100% stay solid.
-fn fill_row(p: &Palette, done: usize, total: usize, width: u16) -> Vec<Color> {
-    let width = usize::from(width);
-    if total == 0 || done == 0 {
-        return vec![p.track; width];
-    }
-    if done >= total {
-        return vec![p.fill; width];
-    }
-    let edge = done as f64 / total as f64 * width as f64;
-    let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(edge);
-    (0..width)
-        .map(|x| {
-            let center = x as f64 + 0.5;
-            let t = ((edge - center) / ramp).clamp(0.0, 1.0);
-            // Smoothstep keeps both ends of the fade gentle.
-            mix(p.track, p.fill, t * t * (3.0 - 2.0 * t))
-        })
-        .collect()
 }
 
 fn mtime(store: &Store) -> Option<SystemTime> {
@@ -656,19 +881,22 @@ fn draw_panel(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, ui: &Ui, hist
 }
 
 /// A manually started viewer (`ap view`): shows one plan file, changes nothing on exit.
-pub fn watch(store: &Store) -> Result<()> {
-    run(Store::at(store.path.clone()), None)
+pub fn watch(store: &Store, idle_secs: u64) -> Result<()> {
+    run(Store::at(store.path.clone()), None, idle_secs)
 }
 
 /// An automatic viewer: follows its pane's state file, switching to whatever plan that
 /// pane changed last, keeps a heartbeat, exits once the state stops naming `instance`,
 /// and records the user's dismissal on q.
-pub fn follow(panes: &Panes, instance: &str) -> Result<()> {
+pub fn follow(panes: &Panes, instance: &str, idle_secs: u64) -> Result<()> {
     let Some(state) = panes.load() else {
         return Ok(());
     };
-    run(Store::at(state.plan), Some((panes, instance)))
+    run(Store::at(state.plan), Some((panes, instance)), idle_secs)
 }
+
+/// Default for how long after the last record the edge keeps breathing.
+pub const IDLE_SECS: u64 = 300;
 
 fn file_mtime(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
@@ -688,8 +916,11 @@ fn source_label(store: &Store) -> String {
         .to_string()
 }
 
-fn run(mut store: Store, follow: Option<(&Panes, &str)>) -> Result<()> {
+fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Result<()> {
     let mut plan = store.load().ok().flatten();
+    let clock = Instant::now();
+    let t = || clock.elapsed().as_secs_f64();
+    let mut motion = Motion::snap(plan.as_ref());
     let mut error: Option<String> = None;
     let mut seen = mtime(&store);
     let mut seen_pane = follow.and_then(|(panes, _)| file_mtime(&panes.path));
@@ -717,6 +948,7 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>) -> Result<()> {
                         if state.plan != store.path {
                             store = Store::at(state.plan);
                             plan = store.load().ok().flatten();
+                            motion = Motion::snap(plan.as_ref());
                             error = None;
                             seen = mtime(&store);
                             source = source_label(&store);
@@ -734,6 +966,7 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>) -> Result<()> {
                     Ok(p) => {
                         plan = p;
                         error = None;
+                        motion.update(t(), plan.as_ref());
                         if ui.mode == Mode::History {
                             history = history_lines(&store);
                         }
@@ -742,14 +975,26 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>) -> Result<()> {
                     Err(e) => error = Some(e.to_string()),
                 }
             }
+            // Breathing means "recorded recently", not proof the agent is running.
+            let recent = plan
+                .as_ref()
+                .is_some_and(|p| crate::store::now().saturating_sub(p.updated_at) <= idle_secs);
+            let look = motion.look(t(), recent && error.is_none());
             terminal.draw(|f| {
                 if ui.mode == Mode::Bar && !ui.typing {
-                    draw(f, &colors, plan.as_ref(), error.as_deref(), &source)
+                    draw(f, &colors, plan.as_ref(), error.as_deref(), &source, &look)
                 } else {
                     draw_panel(f, &colors, plan.as_ref(), &ui, &history)
                 }
             })?;
-            if event::poll(Duration::from_millis(500))?
+            // ~8 fps only while something moves; otherwise a slow poll. ratatui redraws
+            // only the cells that changed.
+            let tick = if motion.moving(t()) || look.glow.is_some() {
+                125
+            } else {
+                500
+            };
+            if event::poll(Duration::from_millis(tick))?
                 && let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
             {
@@ -790,15 +1035,20 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
 
-    fn screen(plan: &Plan, width: u16, height: u16) -> String {
+    fn render(plan: &Plan, width: u16, height: u16, look: &Look) -> Terminal<TestBackend> {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
-            .draw(|f| draw(f, &SIGNAL, Some(plan), None, "plans/x.json"))
+            .draw(|f| draw(f, &SIGNAL, Some(plan), None, "plans/x.json", look))
             .unwrap();
+        terminal
+    }
+
+    fn text_of(terminal: &Terminal<TestBackend>) -> String {
         let buffer = terminal.backend().buffer();
-        (0..height)
+        let area = buffer.area;
+        (0..area.height)
             .map(|y| {
-                (0..width)
+                (0..area.width)
                     .map(|x| buffer[(x, y)].symbol())
                     .collect::<String>()
             })
@@ -806,6 +1056,10 @@ mod tests {
             .join("\n")
             // Wide (Korean) cells are followed by a blank continuation cell.
             .replace(' ', "")
+    }
+
+    fn screen(plan: &Plan, width: u16, height: u16) -> String {
+        text_of(&render(plan, width, height, &Look::of(Some(plan))))
     }
 
     fn plan(n: u32) -> Plan {
@@ -818,7 +1072,7 @@ mod tests {
     }
 
     #[test]
-    fn header_groups_goal_percent_and_counts() {
+    fn one_now_line_and_role_labels() {
         let mut plan = plan(4);
         plan.set("1", State::Done, None, None).unwrap();
         plan.set("2", State::Doing, None, None).unwrap();
@@ -827,8 +1081,57 @@ mod tests {
             text.lines().next().unwrap().contains("목표25%·1/4"),
             "{text}"
         );
-        assert!(text.contains("현재계획·항목2"), "{text}");
-        assert!(text.contains("계획상진행·항목2"), "{text}");
+        assert_eq!(
+            text.matches("항목2").count(),
+            1,
+            "current step shown once: {text}"
+        );
+        assert!(text.contains("지금›항목2"), "{text}");
+        assert!(text.contains("다음›항목3"), "{text}");
+        assert!(text.contains("완료›항목1"), "{text}");
+        assert!(
+            text.lines().last().unwrap().contains("파일›plans/x.json"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("계획상진행") && !text.contains("현재계획"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn two_steps_in_progress_are_both_shown_as_a_warning() {
+        let mut plan = plan(3);
+        plan.set("1", State::Doing, None, None).unwrap();
+        plan.set("2", State::Doing, None, None).unwrap();
+        let terminal = render(&plan, 80, 7, &Look::of(Some(&plan)));
+        let text = text_of(&terminal);
+        assert!(
+            text.contains("지금›항목1") && text.contains("지금›항목2"),
+            "{text}"
+        );
+        let buffer = terminal.backend().buffer();
+        let row = (0..7)
+            .find(|&y| {
+                (0..80)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+                    .replace(' ', "")
+                    .contains("항목1")
+            })
+            .unwrap();
+        let value_cell = (0..80)
+            .find(|&x| buffer[(x, row)].symbol() == "항")
+            .unwrap();
+        assert_eq!(buffer[(value_cell, row)].fg, SIGNAL.warning);
+    }
+
+    #[test]
+    fn titles_with_middle_dots_keep_their_label() {
+        let mut plan = Plan::new("t");
+        plan.add("저장소·고정 번호·이력").unwrap();
+        plan.set("1", State::Doing, None, None).unwrap();
+        assert!(screen(&plan, 80, 5).contains("지금›저장소·고정번호·이력"));
     }
 
     #[test]
@@ -842,7 +1145,7 @@ mod tests {
         )
         .unwrap();
         let text = screen(&plan, 80, 5);
-        assert!(text.contains("!항목3·키필요·필요:user"), "{text}");
+        assert!(text.contains("막힘›항목3—키필요(필요:user)"), "{text}");
     }
 
     #[test]
@@ -853,42 +1156,193 @@ mod tests {
     }
 
     #[test]
-    fn tall_pane_lists_checklist() {
+    fn tall_pane_lists_checklist_above_the_file_row() {
         let mut plan = plan(3);
         plan.set("1", State::Done, None, None).unwrap();
         let text = screen(&plan, 80, 12);
-        assert!(text.contains("체크리스트·1/3완료"), "{text}");
+        assert!(text.contains("체크리스트›1/3완료"), "{text}");
         assert!(text.contains("[x]항목1"), "{text}");
+        assert!(text.lines().last().unwrap().contains("파일›"), "{text}");
     }
 
     #[test]
-    fn background_fades_into_track_at_progress_edge() {
-        let row = fill_row(&SIGNAL, 1, 2, 40);
-        assert_eq!(row[0], SIGNAL.fill);
-        assert_eq!(row[20], SIGNAL.track);
-        assert_eq!(row[39], SIGNAL.track);
-        let fading: Vec<_> = row[..20].iter().filter(|c| **c != SIGNAL.fill).collect();
-        assert!(fading.len() >= 3, "{row:?}");
-        assert!(fading.iter().all(|c| **c != SIGNAL.track));
+    fn arrow_shape_by_height() {
+        assert_eq!(arrow_offsets(5), vec![0, 1, 2, 1, 0]);
+        assert_eq!(arrow_offsets(6), vec![0, 1, 2, 2, 1, 0]);
+        assert_eq!(arrow_offsets(7), vec![0, 1, 2, 2, 2, 1, 0]);
     }
 
     #[test]
-    fn empty_and_complete_are_solid() {
+    fn arrow_only_from_half_until_done() {
+        let at = |done, total| {
+            let mut p = plan(total);
+            for i in 1..=done {
+                p.set(&i.to_string(), State::Done, None, None).unwrap();
+            }
+            Look::of(Some(&p))
+        };
+        assert_eq!(at(1, 2).arrow, 1.0);
+        assert_eq!(at(49, 100).arrow, 0.0);
+        assert_eq!(at(3, 3).arrow, 0.0);
+        assert_eq!(at(0, 3).arrow, 0.0);
+    }
+
+    fn filled(row: &[Color]) -> usize {
+        row.iter().filter(|c| **c != SIGNAL.track).count()
+    }
+
+    #[test]
+    fn arrow_tip_sits_at_the_edge_and_outer_rows_pull_back() {
+        let look = Look {
+            ratio: 0.5,
+            arrow: 1.0,
+            glow: None,
+        };
+        let (rows, _) = fill_cells(&SIGNAL, &look, 40, 5);
+        assert_eq!(filled(&rows[2]), 20, "apex reaches the progress edge");
+        assert_eq!(filled(&rows[1]), 19);
+        assert_eq!(filled(&rows[0]), 18);
+        assert_eq!(rows[0], rows[4]);
+    }
+
+    #[test]
+    fn below_half_is_a_flat_fade_and_extremes_are_solid() {
+        let look = Look {
+            ratio: 0.3,
+            arrow: 0.0,
+            glow: None,
+        };
+        let (rows, _) = fill_cells(&SIGNAL, &look, 40, 5);
+        assert!(rows.iter().all(|r| r == &rows[0]));
+        assert_eq!(rows[0][0], SIGNAL.fill);
+        assert_eq!(rows[0][12], SIGNAL.track);
+        let solid = |r: f64| {
+            fill_cells(
+                &SIGNAL,
+                &Look {
+                    ratio: r,
+                    arrow: 0.0,
+                    glow: None,
+                },
+                30,
+                3,
+            )
+            .0
+        };
+        assert!(solid(1.0).iter().flatten().all(|c| *c == SIGNAL.fill));
+        assert!(solid(0.0).iter().flatten().all(|c| *c == SIGNAL.track));
+    }
+
+    #[test]
+    fn arrow_fade_stays_inside_the_fill() {
+        let look = Look {
+            ratio: 0.6,
+            arrow: 1.0,
+            glow: None,
+        };
+        let (rows, _) = fill_cells(&SIGNAL, &look, 50, 5);
+        let soft = mix(SIGNAL.track, SIGNAL.fill, 0.8);
+        // Last filled cell is the softest but never the bare track colour.
+        let last = rows[2][filled(&rows[2]) - 1];
+        assert_ne!(last, SIGNAL.track);
+        assert_ne!(last, SIGNAL.fill);
+        let Color::Rgb(_, g_last, _) = last else {
+            panic!()
+        };
+        let Color::Rgb(_, g_soft, _) = soft else {
+            panic!()
+        };
+        assert!(g_last >= g_soft);
+    }
+
+    #[test]
+    fn half_cell_tip_never_lands_on_a_wide_glyph() {
+        let mut plan = Plan::new("t");
+        plan.goal = Some("가나다라마바사아자차카타파하".into());
+        plan.add("하나").unwrap();
+        plan.add("둘").unwrap();
+        plan.set("1", State::Done, None, None).unwrap();
+        for tenths in 0..40 {
+            let look = Look {
+                ratio: 0.5 + f64::from(tenths) / 400.0,
+                arrow: 1.0,
+                glow: Some(1.0),
+            };
+            let terminal = render(&plan, 70, 7, &look);
+            let text = text_of(&terminal);
+            assert!(text.contains("가나다라마바사아자차카타파하"), "{text}");
+            let buffer = terminal.backend().buffer();
+            for y in 0..7 {
+                for x in 1..70 {
+                    if buffer[(x, y)].symbol() == "▌" {
+                        assert_ne!(buffer[(x - 1, y)].symbol().width(), 2);
+                    }
+                    // The backend never receives a wide glyph's continuation cell (the
+                    // terminal paints it with the glyph); check it when it is present.
+                    if buffer[(x - 1, y)].symbol().width() == 2 && buffer[(x, y)].bg != Color::Reset
+                    {
+                        assert_eq!(
+                            buffer[(x, y)].bg,
+                            buffer[(x - 1, y)].bg,
+                            "glyph halves share a background"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn completion_slides_and_the_arrow_grows_after_half() {
+        let mut p = plan(4);
+        p.set("1", State::Done, None, None).unwrap();
+        let mut motion = Motion::snap(Some(&p));
+        assert_eq!(motion.look(0.0, false).ratio, 0.25);
+        p.set("2", State::Done, None, None).unwrap();
+        p.set("3", State::Done, None, None).unwrap();
+        motion.update(10.0, Some(&p));
+        let mid = motion.look(10.1, false);
+        assert!(mid.ratio > 0.25 && mid.ratio < 0.75, "{mid:?}");
+        assert!(motion.moving(10.1));
+        let settled = motion.look(10.6, false);
+        assert_eq!(settled.ratio, 0.75);
+        // The arrow starts growing once the shown fill passed half way.
+        let grown = motion.look(10.6 + ARROW_SECS, false);
+        assert_eq!(grown.arrow, 1.0);
+        assert!(!motion.moving(11.2));
+    }
+
+    #[test]
+    fn breathing_only_when_settled_recent_and_unfinished() {
+        let mut p = plan(2);
+        p.set("1", State::Done, None, None).unwrap();
+        let mut motion = Motion::snap(Some(&p));
+        assert!(motion.look(1.0, true).glow.is_some());
         assert!(
-            fill_row(&SIGNAL, 0, 3, 30)
-                .iter()
-                .all(|c| *c == SIGNAL.track)
+            motion.look(1.0, false).glow.is_none(),
+            "stale: no breathing"
+        );
+        p.set("2", State::Done, None, None).unwrap();
+        motion.update(5.0, Some(&p));
+        assert!(
+            motion.look(5.1, true).glow.is_none(),
+            "no breathing while sliding"
         );
         assert!(
-            fill_row(&SIGNAL, 3, 3, 30)
-                .iter()
-                .all(|c| *c == SIGNAL.fill)
+            motion.look(9.0, true).glow.is_none(),
+            "no breathing at 100%"
         );
-        assert!(
-            fill_row(&SIGNAL, 0, 0, 30)
-                .iter()
-                .all(|c| *c == SIGNAL.track)
-        );
+    }
+
+    #[test]
+    fn switching_plans_snaps_without_sliding() {
+        let a = plan(4);
+        let mut b = plan(2);
+        b.set("1", State::Done, None, None).unwrap();
+        let _ = Motion::snap(Some(&a));
+        let mut motion = Motion::snap(Some(&b));
+        assert_eq!(motion.look(0.0, false).ratio, 0.5);
+        assert!(!motion.moving(0.0));
     }
 
     fn press(ui: &mut Ui, plan: &Plan, keys: &[KeyCode]) {
@@ -984,5 +1438,58 @@ mod tests {
             handle(&mut ui, KeyCode::Char('c'), true, Some(&plan), 16),
             Action::Quit
         ));
+    }
+
+    /// `AP_PREVIEW_DIR=… cargo test dump_previews -- --ignored` writes cell dumps that
+    /// scripts/render_preview.py turns into PNGs for a visual check.
+    #[test]
+    #[ignore]
+    fn dump_previews() {
+        let dir = std::path::PathBuf::from(std::env::var("AP_PREVIEW_DIR").unwrap());
+        let mut p = Plan::new("t");
+        p.goal = Some("진행 창 UI 개선".into());
+        for i in 1..=50 {
+            p.add(&format!("단계 {i} · 세부 작업")).unwrap();
+        }
+        for (name, done, glow) in [
+            ("030", 15, None),
+            ("050", 25, Some(0.0)),
+            ("060", 30, Some(1.0)),
+            ("094", 47, Some(0.5)),
+            ("100", 50, None),
+        ] {
+            let mut plan = p.clone();
+            for i in 1..=done {
+                plan.set(&i.to_string(), State::Done, None, None).unwrap();
+            }
+            if done < 50 {
+                plan.set(&(done + 1).to_string(), State::Doing, None, None)
+                    .unwrap();
+            }
+            let mut look = Look::of(Some(&plan));
+            look.glow = glow;
+            let terminal = render(&plan, 96, 7, &look);
+            let buffer = terminal.backend().buffer();
+            let rgb = |c: Color| match c {
+                Color::Rgb(r, g, b) => vec![r, g, b],
+                _ => vec![],
+            };
+            let cells: Vec<Vec<serde_json::Value>> = (0..7)
+                .map(|y| {
+                    (0..96)
+                        .map(|x| {
+                            let c = &buffer[(x, y)];
+                            serde_json::json!({"s": c.symbol(), "fg": rgb(c.fg), "bg": rgb(c.bg),
+                                "b": c.modifier.contains(Modifier::BOLD)})
+                        })
+                        .collect()
+                })
+                .collect();
+            std::fs::write(
+                dir.join(format!("{name}.json")),
+                serde_json::to_vec(&cells).unwrap(),
+            )
+            .unwrap();
+        }
     }
 }

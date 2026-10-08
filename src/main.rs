@@ -81,6 +81,9 @@ enum Cmd {
         /// 진행 창이 따라갈 pane 상태 파일 (내부용)
         #[arg(long, hide = true)]
         pane_state: Option<PathBuf>,
+        /// 마지막 기록 후 이 시간(초)이 지나면 숨쉬기 표시를 멈춥니다 (기본 AP_IDLE_SECS 또는 300)
+        #[arg(long)]
+        idle_secs: Option<u64>,
     },
     /// 현재 pane 아래에 진행 창을 엽니다 (자동 열기 억제 해제)
     Open,
@@ -293,6 +296,13 @@ fn new_instance() -> String {
     format!("{:x}-{:x}", std::process::id(), nanos)
 }
 
+fn idle_default() -> u64 {
+    std::env::var("AP_IDLE_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(view::IDLE_SECS)
+}
+
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
@@ -301,10 +311,11 @@ fn shell_quote(s: &str) -> String {
 fn viewer_command(pane_state: &std::path::Path, instance: &str) -> Result<String> {
     let exe = std::env::current_exe()?;
     Ok(format!(
-        "{} view --pane-state {} --instance {}",
+        "{} view --pane-state {} --instance {} --idle-secs {}",
         shell_quote(exe.to_str().context("binary path encoding")?),
         shell_quote(pane_state.to_str().context("state path encoding")?),
-        shell_quote(instance)
+        shell_quote(instance),
+        idle_default()
     ))
 }
 
@@ -332,10 +343,12 @@ fn run() -> Result<()> {
         once,
         instance,
         pane_state,
+        idle_secs,
     }) = &cli.command
     {
+        let idle = idle_secs.unwrap_or_else(idle_default);
         if let (Some(state), Some(id)) = (pane_state, instance) {
-            return view::follow(&Panes::at(state.clone()), id);
+            return view::follow(&Panes::at(state.clone()), id, idle);
         }
         if let Some(file) = file {
             let store = Store::at(file.clone());
@@ -343,7 +356,7 @@ fn run() -> Result<()> {
                 println!("{}", view::summary(store.load()?.as_ref()));
                 return Ok(());
             }
-            return view::watch(&store);
+            return view::watch(&store, idle);
         }
     }
     if let Some(Cmd::Skill { action }) = &cli.command {
@@ -437,7 +450,7 @@ fn run() -> Result<()> {
                 println!("{}", view::summary(ctx.store.load()?.as_ref()));
                 return Ok(());
             }
-            return view::watch(&ctx.store);
+            return view::watch(&ctx.store, idle_default());
         }
         Cmd::Open => {
             match ctx.ensure_view(true)? {

@@ -50,6 +50,20 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+3.2.0 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.2.0 (Latest)
+Release commit 18b2e45 passed Rust CI 37705669392; archive SHA-256
+103900b5ff6963cbea68a7d33d88b65863279496cc63ca0b924a397c6848194b (repack
+byte-identical, 3.1.0 → 3.2.0 upgrade/rollback smoke, downloaded asset
+matched). Formula e77e5b8 (with `ap skill install` caveat) passed Homebrew
+install CI 37705835647 and Rust CI 37705835617; brew upgrade/test and
+~/.local install on this Mac. Adds `ap skill install|remove`, automatic
+`.agent-progress/.gitignore`, and one viewer per source pane (user-reported
+bug: a repo and its worktree stacked two viewers under one pane). Live Herdr:
+alternating changes from two projects switch one viewer; close, dismissal,
+`ap open` and q behave per pane. A fresh Claude Code session used ap without
+being told after the CLAUDE.md instruction (now the marked block written by
+`ap skill install`; manual block removed, backup CLAUDE.md.bak-ap-20261008).
+
 Remaining harnesses (2026-10-06, user-authorized login/free-model setup):
 Amp (browser device login; custom-url router "Command Code (free)" on the
 user's Amp account mapping all 49 Amp models to inclusionai/ling-3.0-flash-sante:free,

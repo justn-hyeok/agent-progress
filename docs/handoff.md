@@ -1,6 +1,7 @@
 # Release handoff
 
-3.3.0 is the latest release (progress pane redesign; see docs/current-plan.md
+3.3.1 is the latest release (3.3.0 progress pane redesign plus a plan-name
+collision fix; see docs/current-plan.md
 for evidence). Installed via Homebrew and ~/.local on this Mac.
 
 3.0.0-beta.2 (prerelease, https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-beta.2)

@@ -50,6 +50,13 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+3.3.1 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.3.1 (Latest)
+Fixes plan-name collisions for non-ASCII names (`가나`/`다라` shared `__.json`):
+any-script letters kept, lossy names get an FNV-1a suffix, pane keys unchanged.
+Archive SHA-256 399e7f1eb6e6c0f57faca7a8e596320c623d209f7fea566d1cc5a12358db5b0e
+(repack byte-identical, 3.3.0 → 3.3.1 smoke, downloaded asset matched); main
+Rust CI, formula Homebrew install CI; brew upgrade/test and ~/.local on this Mac.
+
 3.3.0 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.3.0 (Latest)
 Release commit a1ab9f3 passed Rust CI on main and branch (runs 37711178330,
 37711181048); archive SHA-256

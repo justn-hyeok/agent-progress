@@ -54,17 +54,17 @@ struct Palette {
     glow: Color,
 }
 
-/// Signal preset in deep green: cool fill and a mint travelling light (no yellow cast),
+/// Signal preset in cool deep green: blue-green fill and a mint travelling light,
 /// with the brighter secondary text the user tuned in 1.x.
 const SIGNAL: Palette = Palette {
-    track: Color::Rgb(0x0E, 0x13, 0x16),
-    fill: Color::Rgb(0x24, 0x49, 0x3A),
+    track: Color::Rgb(0x0C, 0x13, 0x16),
+    fill: Color::Rgb(0x1F, 0x48, 0x42),
     accent: Color::Rgb(0xC7, 0xF9, 0x6C),
     text: Color::Rgb(0xF2, 0xF5, 0xEE),
     muted: Color::Rgb(0xC4, 0xD0, 0xC6),
     metadata: Color::Rgb(0xB6, 0xC4, 0xBA),
     warning: Color::Rgb(0xF5, 0xC2, 0x6F),
-    glow: Color::Rgb(0x5F, 0xD3, 0xA0),
+    glow: Color::Rgb(0x5C, 0xD6, 0xB8),
 };
 
 fn hex(value: Option<&serde_json::Value>) -> Option<Color> {
@@ -191,6 +191,8 @@ const SWEEP_SECS: f64 = 2.8;
 #[derive(Clone, Copy, Debug)]
 pub struct Motion {
     ratio: Tween,
+    /// Last time the light was allowed to flow; the sweep then running is finished.
+    last_flow: Option<f64>,
 }
 
 impl Motion {
@@ -198,6 +200,7 @@ impl Motion {
     pub fn snap(plan: Option<&Plan>) -> Self {
         Motion {
             ratio: Tween::snap(Look::of(plan).ratio),
+            last_flow: None,
         }
     }
 
@@ -207,14 +210,23 @@ impl Motion {
     }
 
     /// Look at time `t`. `flow` lets the light travel through the fill toward the edge;
-    /// it waits for a slide to finish and never runs on an empty or finished plan.
-    pub fn look(&self, t: f64, flow: bool) -> Look {
+    /// when it stops being allowed, the sweep already under way still runs to the edge
+    /// and fades out instead of vanishing mid-way. No light while sliding, on an empty
+    /// plan or a finished one.
+    pub fn look(&mut self, t: f64, flow: bool) -> Look {
         let ratio = self.ratio.at(t);
         let settled = !self.ratio.moving(t);
+        let able = ratio > 0.0 && ratio < 1.0 && settled;
+        if flow && able {
+            self.last_flow = Some(t);
+        }
+        let finishing = self.last_flow.is_some_and(|last| {
+            let cycle_end = ((last / SWEEP_SECS).floor() + 1.0) * SWEEP_SECS;
+            t < cycle_end
+        });
         Look {
             ratio,
-            sweep: (flow && ratio > 0.0 && ratio < 1.0 && settled)
-                .then(|| (t / SWEEP_SECS).rem_euclid(1.0)),
+            sweep: (able && (flow || finishing)).then(|| (t / SWEEP_SECS).rem_euclid(1.0)),
         }
     }
 
@@ -236,42 +248,54 @@ fn smooth(t: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Background per cell (row-major): solid fill that fades widely into the track at the
-/// progress edge. A soft band of light travels from the left toward the edge, fading
-/// with the gradient, so the direction of progress shows without drawing a shape.
-fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Color>> {
+/// Colours at twice the vertical resolution (two pixel rows per terminal row): solid
+/// fill fading widely into the track at the progress edge. A soft band of light travels
+/// from the left toward the edge; past half way it bends into a `>` (middle rows lead,
+/// two cells per row so it reads as ~45°) and fades out as it reaches the edge.
+fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Color>> {
+    let rows = height * 2;
     if look.ratio <= 0.0 || width == 0 {
-        return vec![vec![p.track; width]; height];
+        return vec![vec![p.track; width]; rows];
     }
     if look.ratio >= 1.0 {
-        return vec![vec![p.fill; width]; height];
+        return vec![vec![p.fill; width]; rows];
     }
     let edge = look.ratio * width as f64;
     let ramp = (width as f64 * 0.35).clamp(6.0, 40.0).min(edge.max(1.0));
     let band = (width as f64 * 0.12).clamp(4.0, 16.0);
-    let row: Vec<Color> = (0..width)
-        .map(|x| {
-            let center = x as f64 + 0.5;
-            if center > edge {
-                return p.track;
-            }
-            let t = smooth((edge - center) / ramp);
-            let base = mix(p.track, p.fill, t);
-            let Some(phase) = look.sweep else {
-                return base;
-            };
-            // The band starts just left of the pane and ends at the edge.
-            let at = phase * (edge + band) - band / 2.0;
-            let d = ((center - at) / (band / 2.0)).abs();
-            let light = if d < 1.0 {
-                0.5 + 0.5 * (std::f64::consts::PI * d).cos()
-            } else {
-                0.0
-            };
-            mix(base, p.glow, 0.32 * light * (0.3 + 0.7 * t))
+    let half = height as f64 / 2.0;
+    (0..rows)
+        .map(|py| {
+            // Distance of this pixel row from the vertical middle, 0 (middle) to 1 (edge).
+            let y = (py as f64 + 0.5) / 2.0;
+            let from_middle = ((y - half) / half).abs().min(1.0);
+            (0..width)
+                .map(|x| {
+                    let center = x as f64 + 0.5;
+                    if center > edge {
+                        return p.track;
+                    }
+                    let t = smooth((edge - center) / ramp);
+                    let base = mix(p.track, p.fill, t);
+                    let Some(phase) = look.sweep else {
+                        return base;
+                    };
+                    let bend = smooth((phase - 0.45) / 0.55);
+                    let lead = bend * 2.0 * half * (1.0 - from_middle);
+                    let at = phase * (edge + band) - band / 2.0 - 2.0 * half * bend + lead;
+                    let width_now = band * (1.0 - 0.45 * bend);
+                    let d = ((center - at) / (width_now / 2.0)).abs();
+                    let light = if d < 1.0 {
+                        0.5 + 0.5 * (std::f64::consts::PI * d).cos()
+                    } else {
+                        0.0
+                    };
+                    let fade = 1.0 - smooth((phase - 0.7) / 0.3);
+                    mix(base, p.glow, 0.34 * light * fade * (0.3 + 0.7 * t))
+                })
+                .collect()
         })
-        .collect();
-    vec![row; height]
+        .collect()
 }
 
 fn field(label: &str, value: String, value_style: Style, p: &Palette) -> Line<'static> {
@@ -452,24 +476,35 @@ fn draw(
     paint(frame, p, look);
 }
 
-/// Paint the bar under the text; both halves of a wide (e.g. Korean) glyph keep one
-/// background so it stays legible on the gradient.
+/// Paint the bar under the text at twice the vertical resolution: a blank cell shows
+/// its two pixels with `▀` (top as foreground, bottom as background); a cell holding
+/// text gets their average so the text stays as is. Both halves of a wide (e.g. Korean)
+/// glyph share one background so it stays legible.
 fn paint(frame: &mut Frame, p: &Palette, look: &Look) {
     let area = frame.area();
-    let rows = fill_cells(p, look, usize::from(area.width), usize::from(area.height));
+    let px = pixels(p, look, usize::from(area.width), usize::from(area.height));
     let buf = frame.buffer_mut();
-    for (r, row) in rows.iter().enumerate() {
+    for r in 0..usize::from(area.height) {
         let y = area.y + r as u16;
-        let mut wide_prev = false;
-        for (c, bg) in row.iter().enumerate() {
+        let (top, bottom) = (&px[2 * r], &px[2 * r + 1]);
+        let mut wide_prev: Option<Color> = None;
+        for c in 0..usize::from(area.width) {
             let cell = &mut buf[(area.x + c as u16, y)];
-            if wide_prev {
-                cell.bg = row[c - 1];
-                wide_prev = false;
+            if let Some(bg) = wide_prev.take() {
+                cell.bg = bg;
                 continue;
             }
-            cell.bg = *bg;
-            wide_prev = cell.symbol().width() == 2;
+            let (t, b) = (top[c], bottom[c]);
+            if cell.symbol() == " " && t != b {
+                cell.set_symbol("▀");
+                cell.fg = t;
+                cell.bg = b;
+            } else {
+                cell.bg = mix(t, b, 0.5);
+                if cell.symbol().width() == 2 {
+                    wide_prev = Some(cell.bg);
+                }
+            }
         }
     }
 }
@@ -1119,7 +1154,7 @@ mod tests {
             ratio: 0.6,
             sweep: None,
         };
-        let rows = fill_cells(&SIGNAL, &look, 100, 7);
+        let rows = pixels(&SIGNAL, &look, 100, 7);
         assert!(rows.iter().all(|r| r == &rows[0]));
         let row = &rows[0];
         assert_eq!(row[0], SIGNAL.fill);
@@ -1129,7 +1164,7 @@ mod tests {
         let greens: Vec<u8> = row[..60].iter().map(|c| green(*c)).collect();
         assert!(greens.windows(2).all(|w| w[1] <= w[0]), "{greens:?}");
         let solid = |r: f64| {
-            fill_cells(
+            pixels(
                 &SIGNAL,
                 &Look {
                     ratio: r,
@@ -1150,7 +1185,7 @@ mod tests {
                 ratio: 0.6,
                 sweep: Some(phase),
             };
-            let plain = fill_cells(
+            let plain = pixels(
                 &SIGNAL,
                 &Look {
                     ratio: 0.6,
@@ -1159,18 +1194,109 @@ mod tests {
                 100,
                 7,
             );
-            let lit = fill_cells(&SIGNAL, &look, 100, 7);
+            let lit = pixels(&SIGNAL, &look, 100, 7);
             assert!(
-                lit[0][60..].iter().all(|c| *c == SIGNAL.track),
+                lit.iter()
+                    .all(|r| r[60..].iter().all(|c| *c == SIGNAL.track)),
                 "never past the edge"
             );
             (0..100)
-                .max_by_key(|&x| green(lit[0][x]).saturating_sub(green(plain[0][x])))
+                .max_by_key(|&x| green(lit[7][x]).saturating_sub(green(plain[7][x])))
                 .unwrap()
         };
         let early = brightest(0.2);
         let late = brightest(0.7);
         assert!(early < late, "light moves right: {early} -> {late}");
+    }
+
+    fn lift_by_row(phase: f64) -> Vec<(usize, u8)> {
+        let plain = pixels(
+            &SIGNAL,
+            &Look {
+                ratio: 0.6,
+                sweep: None,
+            },
+            100,
+            7,
+        );
+        let lit = pixels(
+            &SIGNAL,
+            &Look {
+                ratio: 0.6,
+                sweep: Some(phase),
+            },
+            100,
+            7,
+        );
+        (0..14)
+            .map(|y| {
+                (0..100)
+                    .map(|x| (x, green(lit[y][x]).saturating_sub(green(plain[y][x]))))
+                    .max_by_key(|(_, l)| *l)
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn light_is_a_straight_band_first_then_bends_into_an_arrow() {
+        let early = lift_by_row(0.3);
+        assert!(
+            early.iter().all(|(x, _)| x.abs_diff(early[7].0) <= 1),
+            "straight: {early:?}"
+        );
+        let late = lift_by_row(0.85);
+        assert!(late[7].0 > late[0].0 + 3, "middle leads: {late:?}");
+        assert!(
+            late[3].0 < late[7].0 && late[3].0 > late[0].0,
+            "a > shape: {late:?}"
+        );
+        assert_eq!(late[0].0.abs_diff(late[13].0), 0, "symmetric");
+    }
+
+    #[test]
+    fn light_fades_out_as_it_reaches_the_edge() {
+        let strength = |phase: f64| lift_by_row(phase).iter().map(|(_, l)| *l).max().unwrap();
+        assert!(strength(0.5) > 0);
+        assert!(
+            strength(0.99) < strength(0.5) / 4,
+            "{} vs {}",
+            strength(0.99),
+            strength(0.5)
+        );
+    }
+
+    #[test]
+    fn a_stopped_flow_finishes_the_current_sweep() {
+        let mut p = plan(2);
+        p.set("1", State::Done, None, None).unwrap();
+        let mut motion = Motion::snap(Some(&p));
+        assert!(motion.look(1.0, true).sweep.is_some());
+        let mid = motion.look(1.5, false);
+        assert!(mid.sweep.is_some(), "the sweep under way keeps going");
+        assert!(motion.look(SWEEP_SECS - 0.01, false).sweep.is_some());
+        assert!(
+            motion.look(SWEEP_SECS + 0.01, false).sweep.is_none(),
+            "then stops"
+        );
+    }
+
+    #[test]
+    fn blank_cells_draw_two_pixels_and_text_cells_keep_their_text() {
+        let mut plan = plan(2);
+        plan.set("1", State::Done, None, None).unwrap();
+        let look = Look {
+            ratio: 0.5,
+            sweep: Some(0.85),
+        };
+        let terminal = render(&plan, 70, 7, &look);
+        let buffer = terminal.backend().buffer();
+        let halves = (0..7)
+            .flat_map(|y| (0..70).map(move |x| (x, y)))
+            .filter(|&(x, y)| buffer[(x, y)].symbol() == "▀")
+            .count();
+        assert!(halves > 0, "the bent light uses half-cell pixels");
+        assert!(text_of(&terminal).contains("지금›") || text_of(&terminal).contains("다음›항목2"));
     }
 
     #[test]
@@ -1227,7 +1353,10 @@ mod tests {
         p.set("1", State::Done, None, None).unwrap();
         let mut motion = Motion::snap(Some(&p));
         assert!(motion.look(1.0, true).sweep.is_some());
-        assert!(motion.look(1.0, false).sweep.is_none(), "stale: no light");
+        assert!(
+            motion.look(SWEEP_SECS + 0.5, false).sweep.is_none(),
+            "stale: no light once the sweep under way has finished"
+        );
         p.set("2", State::Done, None, None).unwrap();
         motion.update(5.0, Some(&p));
         assert!(
@@ -1247,7 +1376,7 @@ mod tests {
         let mut b = plan(2);
         b.set("1", State::Done, None, None).unwrap();
         let _ = Motion::snap(Some(&a));
-        let motion = Motion::snap(Some(&b));
+        let mut motion = Motion::snap(Some(&b));
         assert_eq!(motion.look(0.0, false).ratio, 0.5);
         assert!(!motion.moving(0.0));
     }
@@ -1393,6 +1522,9 @@ mod tests {
                     .map(|h| hex(Some(&serde_json::json!(h))).unwrap())
                     .collect();
                 (theme.track, theme.fill, theme.glow) = (c[0], c[1], c[2]);
+                if let Some(accent) = c.get(3) {
+                    theme.accent = *accent;
+                }
             }
             let mut terminal = Terminal::new(TestBackend::new(96, 7)).unwrap();
             terminal

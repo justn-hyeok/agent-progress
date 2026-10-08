@@ -22,7 +22,9 @@ for path in sorted(Path(sys.argv[1]).glob('*.json')):
             s = c['s']
             if s.strip():
                 fg = tuple(c['fg']) if c['fg'] else DEFAULT_FG
-                if s == '▌':
+                if s == '▀':
+                    d.rectangle([x * CW, y * CH, (x + 1) * CW - 1, y * CH + CH // 2 - 1], fill=fg)
+                elif s == '▌':
                     d.rectangle([x * CW, y * CH, x * CW + CW // 2 - 1, (y + 1) * CH - 1], fill=fg)
                 else:
                     d.text((x * CW, y * CH + 1), s, font=bold if c['b'] else font, fill=fg)

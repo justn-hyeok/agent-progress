@@ -8,9 +8,14 @@
 - The fill fades widely into the track at the progress edge and is solid at 100%.
 - Motion: the fill slides to its new position on completion, and while the plan
   was recorded within `AP_IDLE_SECS` (default 300, passed to the viewer as
-  `--idle-secs`) a soft band of light travels through the fill toward the edge,
-  fading with the gradient; it stops at 100% and on stale data. ~8 fps only
-  while moving, 2 fps otherwise. Default theme is deep green (fill #24493A, track #0E1316) with a mint light (#5FD3A0).
+  `--idle-secs`) a soft band of light travels through the fill toward the edge:
+  straight at first, it bends into a `>` and fades out as it reaches the edge.
+  When recording goes quiet the sweep under way finishes instead of vanishing.
+  No light at 100% or on stale data; ~8 fps only while moving, 2 fps otherwise.
+- The bar is drawn at twice the vertical resolution: blank cells show two pixels
+  with `▀`, cells with text get the average so text is untouched.
+- Default theme is a cool deep green (fill #1F4842, track #0C1316) with a mint
+  light (#5CD6B8).
 
 ## 3.2.0 — 2026-10-08
 

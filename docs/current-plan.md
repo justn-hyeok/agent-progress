@@ -50,6 +50,17 @@ Live Herdr: close while typing a search, no reopen after q, `ap new` keeps the
 viewer. 27 automated tests. Not verified: tmux, OpenCode. beta.1 (92c2672) was
 the same feature set as alpha.2.
 
+3.4.0 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.4.0 (Latest)
+User decision: the progress pane opens only on `ap open` (AP_AUTO_OPEN=1 restores
+first-record opening), after six panes, three of them brgr workers, had opened
+viewers. Skill and Claude Code block updated; `ap skill install` replaced the
+installed block in place (one marked block). Archive SHA-256
+a3b05716135c57664da72fc9a9816f62936b14960b3191c17adcb68fe03b412c (repack
+byte-identical, 3.3.1 → 3.4.0 smoke, downloaded asset matched); main Rust CI and
+formula Homebrew install CI passed; brew and ~/.local upgraded; GJC skill copy
+refreshed; agents stack verify OK. Live Herdr: records alone open nothing; `ap open`
+opens and then follows.
+
 3.3.1 (2026-10-08): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.3.1 (Latest)
 Fixes plan-name collisions for non-ASCII names (`가나`/`다라` shared `__.json`):
 any-script letters kept, lossy names get an FNV-1a suffix, pane keys unchanged.

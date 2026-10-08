@@ -1,8 +1,8 @@
 class AgentProgress < Formula
   desc "Terminal progress pane for coding agent plans"
   homepage "https://github.com/justn-hyeok/agent-progress"
-  url "https://github.com/justn-hyeok/agent-progress/releases/download/v3.2.0/agent-progress-3.2.0-macos-arm64.tar.gz"
-  sha256 "103900b5ff6963cbea68a7d33d88b65863279496cc63ca0b924a397c6848194b"
+  url "https://github.com/justn-hyeok/agent-progress/releases/download/v3.3.0/agent-progress-3.3.0-macos-arm64.tar.gz"
+  sha256 "a09d892ae8dddc38bcc616a67fd3c62de6c75a604831681b7d2c1cfe3578286c"
 
   depends_on arch: :arm64
   depends_on :macos

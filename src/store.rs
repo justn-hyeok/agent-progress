@@ -94,10 +94,17 @@ impl Plan {
         (done, counted)
     }
 
+    /// Whole-number percent: rounded, but 100 only when everything is done and at
+    /// least 1 once anything is. None when there is nothing to count.
+    pub fn percent(&self) -> Option<usize> {
+        let (done, total) = self.progress();
+        percent(done, total)
+    }
+
     pub fn progress_label(&self) -> String {
-        match self.progress() {
-            (_, 0) => "미정".into(),
-            (done, total) => format!("{done}/{total} ({}%)", done * 100 / total),
+        match (self.progress(), self.percent()) {
+            ((done, total), Some(pct)) => format!("{done}/{total} ({pct}%)"),
+            _ => "미정".into(),
         }
     }
 
@@ -173,6 +180,17 @@ impl Plan {
         let n = self.find(selector)?;
         Ok(self.items.remove(n))
     }
+}
+
+pub fn percent(done: usize, total: usize) -> Option<usize> {
+    if total == 0 {
+        return None;
+    }
+    Some(match done {
+        0 => 0,
+        d if d >= total => 100,
+        d => ((d * 200 + total) / (2 * total)).clamp(1, 99),
+    })
 }
 
 pub fn now() -> u64 {
@@ -353,5 +371,22 @@ impl Store {
 
     pub fn history_path(&self) -> &Path {
         &self.history
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent;
+
+    #[test]
+    fn percent_rounds_but_never_overstates_the_ends() {
+        assert_eq!(percent(0, 0), None);
+        assert_eq!(percent(2, 3), Some(67));
+        assert_eq!(percent(1, 3), Some(33));
+        assert_eq!(percent(1, 18), Some(6));
+        assert_eq!(percent(199, 200), Some(99), "not 100 before done");
+        assert_eq!(percent(1, 300), Some(1), "not 0 once started");
+        assert_eq!(percent(0, 27), Some(0));
+        assert_eq!(percent(27, 27), Some(100));
     }
 }

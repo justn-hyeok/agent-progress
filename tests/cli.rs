@@ -335,3 +335,20 @@ fn close_outside_a_pane_reports_nothing_open() {
     ok(dir.path(), &["add", "a"]);
     assert!(ok(dir.path(), &["close"]).contains("열린 진행 창이 없습니다"));
 }
+
+#[test]
+fn percent_is_a_rounded_whole_number_with_honest_ends() {
+    let dir = tempfile::tempdir().unwrap();
+    let titles: Vec<String> = (1..=18).map(|n| format!("t{n}")).collect();
+    let mut args = vec!["add"];
+    args.extend(titles.iter().map(String::as_str));
+    ok(dir.path(), &args);
+    ok(dir.path(), &["done", "1"]);
+    assert!(ok(dir.path(), &["status"]).contains("1/18 (6%)"));
+    for n in 2..=17 {
+        ok(dir.path(), &["done", &n.to_string()]);
+    }
+    assert!(ok(dir.path(), &["status"]).contains("17/18 (94%)"));
+    ok(dir.path(), &["done", "18"]);
+    assert!(ok(dir.path(), &["status"]).contains("18/18 (100%)"));
+}

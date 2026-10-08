@@ -339,8 +339,7 @@ fn draw(
         u16::from(area.width > 4)
     };
     let width = area.width.saturating_sub(pad * 2).min(110);
-    let metric = (done * 100)
-        .checked_div(total)
+    let metric = crate::store::percent(done, total)
         .map(|pct| format!("{pct}% · {done}/{total}"))
         .unwrap_or_else(|| "체크율 미정".into());
 
@@ -703,8 +702,7 @@ fn draw_panel(frame: &mut Frame, p: &Palette, plan: Option<&Plan>, ui: &Ui, hist
     };
     let width = area.width.saturating_sub(pad * 2);
     let (done, total) = plan.map_or((0, 0), Plan::progress);
-    let metric = (done * 100)
-        .checked_div(total)
+    let metric = crate::store::percent(done, total)
         .map(|pct| format!("{pct}% · {done}/{total}"))
         .unwrap_or_else(|| "체크율 미정".into());
     let title = match ui.mode {

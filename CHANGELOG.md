@@ -14,6 +14,8 @@
   No light at 100% or on stale data; ~8 fps only while moving, 2 fps otherwise.
 - The bar is drawn at twice the vertical resolution: blank cells show two pixels
   with `▀`, cells with text get the average so text is untouched.
+- Percent is a rounded whole number, 100 only when everything is done and at
+  least 1 once anything is (e.g. 2/3 → 67%, 199/200 → 99%).
 - Default theme is a cool deep green (fill #1F4842, track #0C1316) with a mint
   light (#5CD6B8).
 

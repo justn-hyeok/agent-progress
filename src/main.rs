@@ -18,7 +18,7 @@ struct Cli {
     /// 계획 이름. 기본값은 AP_PLAN, Herdr/tmux pane, 그 외에는 프로젝트 기본 계획입니다
     #[arg(long, global = true)]
     plan: Option<String>,
-    /// 이번 명령에서 진행 창을 자동으로 열지 않습니다 (AP_AUTO_OPEN=0과 같음)
+    /// 자동 열기(AP_AUTO_OPEN=1)를 켠 경우에도 이번 명령에서는 진행 창을 열지 않습니다
     #[arg(long, global = true)]
     no_view: bool,
     #[command(subcommand)]
@@ -167,7 +167,7 @@ fn context(plan: Option<String>) -> Result<Ctx> {
         (None, Some(thread), ..) => (format!("codex-{thread}"), None),
         _ => ("default".into(), None),
     };
-    if source_pane.is_none() && (herdr::inside() || cline_daemon) {
+    if auto_open() && source_pane.is_none() && (herdr::inside() || cline_daemon) {
         eprintln!(
             "ap: 이 명령이 실행된 Herdr pane을 확인할 수 없어 진행 창을 자동으로 열지 않습니다. Codex라면 스레드 이름이 정해진 뒤(첫 응답 후) 다시 시도됩니다. 지금 계획은 다른 pane에서 `ap --plan {key} view`로 볼 수 있습니다"
         );
@@ -215,11 +215,14 @@ impl Ctx {
     fn ensure_view(&self, force: bool) -> Result<Option<String>> {
         let (Some(source), Some(panes)) = (&self.source_pane, &self.panes) else {
             if force {
-                bail!("Herdr/tmux pane 밖입니다. 다른 터미널에서 `ap view`를 실행하세요");
+                bail!(
+                    "이 명령이 실행된 Herdr/tmux pane을 확인할 수 없습니다. 다른 터미널에서 `ap --plan {} view`로 보세요",
+                    self.key
+                );
             }
             return Ok(None);
         };
-        let auto_open = std::env::var("AP_AUTO_OPEN").as_deref() != Ok("0");
+        let auto_open = auto_open();
         let mut prior = panes.load().unwrap_or_default();
         if self.terminal.is_some() && prior.terminal_id != self.terminal {
             prior = PaneState::default();
@@ -294,6 +297,12 @@ fn new_instance() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("{:x}-{:x}", std::process::id(), nanos)
+}
+
+/// The progress pane opens on its own only when asked for with `AP_AUTO_OPEN=1`;
+/// otherwise `ap open` opens it, and an open pane keeps following the pane's plan.
+fn auto_open() -> bool {
+    std::env::var("AP_AUTO_OPEN").as_deref() == Ok("1")
 }
 
 fn idle_default() -> u64 {

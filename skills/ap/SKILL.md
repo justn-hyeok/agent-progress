@@ -5,9 +5,10 @@ description: Record your working plan with the ap CLI so the user sees progress 
 
 # ap — agent-progress
 
-Keep your real plan in `ap` while you work, without being asked. A progress pane opens under your
-pane automatically on the first change (Herdr or tmux). You never pass IDs,
-revisions or session names: `ap` keys the plan to your pane.
+Keep your real plan in `ap` while you work, without being asked. Recording does
+not open anything by itself: when the user wants to watch, `ap open` shows a
+progress pane under yours (Herdr or tmux) that keeps following your plan. You
+never pass IDs, revisions or session names: `ap` keys the plan to your pane.
 
 ```sh
 ap goal "로그인 버그 수정"
@@ -31,8 +32,7 @@ ap status
 - Done is your report, not verification. Say what was verified in the reply.
 - `ap new` archives the plan and starts a fresh one for an unrelated task.
 
-If `ap` warns that it cannot confirm the Herdr pane (Codex runs commands in a
-shared daemon), the plan is still recorded per session. Tell the user the
-printed `ap --plan … view` command once; do not guess another pane.
-`--no-view` or `AP_AUTO_OPEN=0` skips opening the pane. Do not reopen a pane
-the user closed; `ap open` is for when the user asks.
+Run `ap open` only when the user asks to see progress. If it reports that it
+cannot confirm the pane (Codex and Cline run commands in a shared daemon), the
+plan is still recorded; tell the user the printed `ap --plan … view` command
+once and do not guess another pane. Do not reopen a pane the user closed.

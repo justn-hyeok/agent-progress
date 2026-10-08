@@ -14,7 +14,7 @@ const OPENAI_YAML: &str = include_str!("../skills/ap/agents/openai.yaml");
 const MARKER: &str = ".ap-managed";
 const BEGIN: &str = "<!-- BEGIN agent-progress (managed by `ap skill`) -->";
 const END: &str = "<!-- END agent-progress -->";
-const CLAUDE_BLOCK: &str = "### Progress Pane (ap)\n\n- For any multi-step task (implementation, debugging, review, research), use the `ap` skill without being asked: record the goal and steps with `ap goal` / `ap add`, then `ap start` / `ap done` / `ap block` as you go. The progress pane opens under your pane automatically. Skip it for one-shot questions or trivial single actions.\n";
+const CLAUDE_BLOCK: &str = "### Progress Pane (ap)\n\n- For any multi-step task (implementation, debugging, review, research), use the `ap` skill without being asked: record the goal and steps with `ap goal` / `ap add`, then `ap start` / `ap done` / `ap block` as you go. Recording never opens a pane by itself; when the user wants to watch, they run `ap open` (or ask you to). Skip it for one-shot questions or trivial single actions.\n";
 
 /// Harness skill roots that do not read ~/.agents/skills directly.
 const LINK_ROOTS: [&str; 4] = [

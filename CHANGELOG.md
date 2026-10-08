@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.4.0 — 2026-10-08
+
+- The progress pane no longer opens on its own: recording just records, and
+  `ap open` opens the pane, which then keeps following that pane's plans.
+  `AP_AUTO_OPEN=1` restores opening on the first record (`--no-view` skips once).
+  Delegated workers (e.g. brgr) therefore stop popping panes everywhere.
+- The skill and the Claude Code instruction block say to run `ap open` only when
+  the user asks; `ap skill install` updates an installed block in place.
+- The "cannot confirm the pane" warning only appears when auto-open is on;
+  `ap open` explains how to view the plan from another pane instead.
+
 ## 3.3.1 — 2026-10-08
 
 - Plan names in any script keep their own file: letters and digits of any

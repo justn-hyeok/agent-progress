@@ -7,12 +7,14 @@ brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progres
 brew install justn-hyeok/agent-progress/agent-progress
 ```
 
-Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치합니다. 압축 파일의
-`skills/ap`는 formula의 `share/agent-progress/skills/`에 보관되며, 사용자 에이전트
-스킬 디렉터리는 자동으로 바꾸지 않습니다. 필요하면 내용을 확인한 뒤 직접 복사합니다.
+Homebrew가 릴리즈 archive의 SHA-256을 검증하고 `ap`를 설치합니다. 설치는 사용자 에이전트
+설정을 바꾸지 않습니다. 에이전트가 ap를 쓰게 하려면 설치 뒤 `ap skill install`을 직접 실행합니다
+(바이너리에 내장된 스킬을 쓰며, `--dry-run`으로 미리 보고 `ap skill remove`로 되돌립니다). 압축
+파일의 `skills/ap`는 formula의 `share/agent-progress/skills/`에도 참고용으로 보관됩니다.
 Rust, Node, Herdr는 설치 의존성이 아닙니다. macOS arm64 전용입니다.
 
-`brew upgrade agent-progress`로 업데이트하고 `brew uninstall agent-progress`로 제거합니다.
+`brew upgrade agent-progress`로 업데이트하고, `ap skill remove` 뒤 `brew uninstall agent-progress`로
+제거합니다.
 프로젝트의 `.agent-progress` 데이터는 보존합니다. 개발자 서명이나 공증은 없습니다.
 
 ## 압축 패키지

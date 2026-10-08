@@ -1,6 +1,10 @@
 # Changelog
 
-## 3.3.0 — unreleased
+## 3.3.0 — 2026-10-08
+
+- README rewritten around a real TUI recording (`docs/media/progress.gif`,
+  reproducible with `scripts/demo/record.sh`); `docs/operations.md` rewritten for
+  3.x; `docs/README.md` separates current docs from 1.x/2.x records.
 
 - Rows by role: `지금 ›`, `막힘 ›`, `다음 ›`, `완료 ›`, dim `파일 ›` at the bottom; the
   duplicate "현재 계획 / 계획상 진행" pair is one line. Several items in progress at

@@ -252,11 +252,13 @@ fn arrow_target(done: usize, total: usize) -> f64 {
     }
 }
 
-/// Arrow protrusion per row: grows toward the middle by one cell per row, capped at 2
-/// (`0·1·2·1·0` for five rows, two apex rows on even heights).
-fn arrow_offsets(height: usize) -> Vec<usize> {
+/// Arrowhead protrusion per row for a `->` shape: two cells per row toward the middle
+/// (terminal cells are about twice as tall as wide, so this reads as ~45°). Five rows
+/// give `0·2·4·2·0`; even heights get two apex rows. Capped for very tall panes.
+fn arrow_offsets(height: usize) -> Vec<f64> {
+    let c = height.saturating_sub(1) as f64 / 2.0;
     (0..height)
-        .map(|r| r.min(height.saturating_sub(1) - r).min(2))
+        .map(|r| (2.0 * (c - (r as f64 - c).abs())).min(8.0))
         .collect()
 }
 
@@ -269,7 +271,9 @@ fn smooth(t: f64) -> f64 {
 type Fill = (Vec<Vec<Color>>, Vec<Option<(usize, Color)>>);
 
 /// Background per cell (row-major) and, per row, an optional half-cell tip `▌` with its
-/// colour. The arrow tip sits exactly at the progress edge; outer rows are pulled back.
+/// colour. Below half: a flat edge fading into the track (no tip). From half: a `->`
+/// arrowhead whose tip sits exactly at the progress edge, with a subtle fade kept
+/// inside the fill. The glow brightens a smooth stretch, never a single detached cell.
 fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
     if look.ratio <= 0.0 || width == 0 {
         return (vec![vec![p.track; width]; height], vec![None; height]);
@@ -279,23 +283,29 @@ fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
     }
     let edge = look.ratio * width as f64;
     let offsets = arrow_offsets(height);
-    let peak = offsets.iter().copied().max().unwrap_or(0) as f64;
+    let peak = offsets.iter().copied().fold(0.0, f64::max).min(edge / 2.0);
     let glow_color = mix(p.fill, p.accent, 0.45);
     let soft = mix(p.track, p.fill, 0.8);
+    let g = look.glow.unwrap_or(0.0);
     let mut rows = Vec::with_capacity(height);
     let mut tips = Vec::with_capacity(height);
     for off in offsets {
-        let row_edge = (edge - (peak - off as f64) * look.arrow).max(0.0);
+        let off = off.min(peak);
+        let row_edge = (edge - (peak - off) * look.arrow).max(0.0);
         let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(row_edge.max(1.0));
         let colour_at = |center: f64| {
             let t = smooth((row_edge - center) / ramp);
-            // Flat edge: fade into the track. Arrow: a subtle fade kept inside the fill.
             let flat = mix(p.track, p.fill, t);
             let inner = mix(soft, p.fill, t);
-            mix(flat, inner, look.arrow)
+            let base = mix(flat, inner, look.arrow);
+            // Flat edge: lift the middle of the fade (zero at both ends). Arrowhead: lift
+            // the last few cells before the crisp edge.
+            let flat_lift = (std::f64::consts::PI * t).sin();
+            let arrow_lift = (1.0 - (row_edge - center) / 3.0).clamp(0.0, 1.0);
+            let lift = flat_lift * (1.0 - look.arrow) + arrow_lift * look.arrow;
+            mix(base, glow_color, 0.35 * g * lift)
         };
-        let last = row_edge.floor() as usize;
-        let mut row: Vec<Color> = (0..width)
+        let row: Vec<Color> = (0..width)
             .map(|x| {
                 if (x as f64) + 1.0 <= row_edge {
                     colour_at(x as f64 + 0.5)
@@ -304,15 +314,11 @@ fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
                 }
             })
             .collect();
+        let last = row_edge.floor() as usize;
         let frac = row_edge - row_edge.floor();
-        let mut tip = (frac >= 0.5 && last < width).then(|| (last, colour_at(row_edge - 0.25)));
-        if let Some(g) = look.glow {
-            let lift = |c: Color| mix(c, glow_color, 0.5 * g);
-            if last > 0 && last <= width {
-                row[last - 1] = lift(row[last - 1]);
-            }
-            tip = tip.map(|(x, c)| (x, lift(c)));
-        }
+        // Half-cell tips only on the crisp arrow edge; a fading edge has none.
+        let tip = (look.arrow > 0.5 && frac >= 0.5 && last < width)
+            .then(|| (last, colour_at(row_edge - 0.25)));
         rows.push(row);
         tips.push(tip);
     }
@@ -1167,9 +1173,9 @@ mod tests {
 
     #[test]
     fn arrow_shape_by_height() {
-        assert_eq!(arrow_offsets(5), vec![0, 1, 2, 1, 0]);
-        assert_eq!(arrow_offsets(6), vec![0, 1, 2, 2, 1, 0]);
-        assert_eq!(arrow_offsets(7), vec![0, 1, 2, 2, 2, 1, 0]);
+        assert_eq!(arrow_offsets(5), vec![0.0, 2.0, 4.0, 2.0, 0.0]);
+        assert_eq!(arrow_offsets(6), vec![0.0, 2.0, 4.0, 4.0, 2.0, 0.0]);
+        assert_eq!(arrow_offsets(7), vec![0.0, 2.0, 4.0, 6.0, 4.0, 2.0, 0.0]);
     }
 
     #[test]
@@ -1200,9 +1206,41 @@ mod tests {
         };
         let (rows, _) = fill_cells(&SIGNAL, &look, 40, 5);
         assert_eq!(filled(&rows[2]), 20, "apex reaches the progress edge");
-        assert_eq!(filled(&rows[1]), 19);
-        assert_eq!(filled(&rows[0]), 18);
+        assert_eq!(filled(&rows[1]), 18);
+        assert_eq!(filled(&rows[0]), 16);
         assert_eq!(rows[0], rows[4]);
+    }
+
+    #[test]
+    fn glow_never_detaches_from_a_fading_edge() {
+        for done in [1, 3, 6, 12, 20] {
+            let look = Look {
+                ratio: f64::from(done) / 50.0,
+                arrow: 0.0,
+                glow: Some(1.0),
+            };
+            let (rows, tips) = fill_cells(&SIGNAL, &look, 96, 7);
+            assert!(
+                tips.iter().all(Option::is_none),
+                "no half tips on a fading edge"
+            );
+            // Brightness (green channel) never rises again toward the edge.
+            let greens: Vec<u8> = rows[0]
+                .iter()
+                .map(|c| match c {
+                    Color::Rgb(_, g, _) => *g,
+                    _ => 0,
+                })
+                .collect();
+            let peak = greens
+                .iter()
+                .position(|g| *g == *greens.iter().max().unwrap())
+                .unwrap();
+            assert!(
+                greens[peak..].windows(2).all(|w| w[1] <= w[0] + 1),
+                "{done}: {greens:?}"
+            );
+        }
     }
 
     #[test]
@@ -1451,13 +1489,15 @@ mod tests {
         for i in 1..=50 {
             p.add(&format!("단계 {i} · 세부 작업")).unwrap();
         }
-        for (name, done, glow) in [
-            ("030", 15, None),
-            ("050", 25, Some(0.0)),
-            ("060", 30, Some(1.0)),
-            ("094", 47, Some(0.5)),
-            ("100", 50, None),
-        ] {
+        let cases: Vec<(String, usize, Option<f64>)> = std::env::var("AP_PREVIEW_CASES")
+            .unwrap_or_else(|_| "15,25,30,47,50".into())
+            .split(',')
+            .map(|d| {
+                let done: usize = d.trim().parse().unwrap();
+                (format!("{done:03}"), done, (done < 50).then_some(0.6))
+            })
+            .collect();
+        for (name, done, glow) in cases {
             let mut plan = p.clone();
             for i in 1..=done {
                 plan.set(&i.to_string(), State::Done, None, None).unwrap();

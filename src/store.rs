@@ -94,8 +94,8 @@ impl Plan {
         (done, counted)
     }
 
-    /// Whole-number percent: rounded, but 100 only when everything is done and at
-    /// least 1 once anything is. None when there is nothing to count.
+    /// Percent with up to two decimals: rounded, but 100 only when everything is done
+    /// and at least 0.01 once anything is. None when there is nothing to count.
     pub fn percent(&self) -> Option<String> {
         let (done, total) = self.progress();
         percent(done, total)

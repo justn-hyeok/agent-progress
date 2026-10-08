@@ -191,8 +191,9 @@ const SWEEP_SECS: f64 = 2.8;
 #[derive(Clone, Copy, Debug)]
 pub struct Motion {
     ratio: Tween,
-    /// Last time the light was allowed to flow; the sweep then running is finished.
-    last_flow: Option<f64>,
+    /// Start time of the light's current sweep. A sweep always runs from the start to
+    /// the edge; it is never cut short by a slide, a new record or the flow stopping.
+    cycle: Option<f64>,
 }
 
 impl Motion {
@@ -200,33 +201,44 @@ impl Motion {
     pub fn snap(plan: Option<&Plan>) -> Self {
         Motion {
             ratio: Tween::snap(Look::of(plan).ratio),
-            last_flow: None,
+            cycle: None,
         }
     }
 
-    /// The same plan changed: slide the fill from where it is shown now.
+    /// The same plan changed. Progress slides forward from where it is shown; when it
+    /// goes down (`ap new`, `todo`, `rm`, `cancel`), it snaps instead of draining.
     pub fn update(&mut self, t: f64, plan: Option<&Plan>) {
-        self.ratio.retarget(t, Look::of(plan).ratio, SLIDE_SECS);
+        let to = Look::of(plan).ratio;
+        if to + 1e-9 < self.ratio.at(t) {
+            self.ratio = Tween::snap(to);
+        } else {
+            self.ratio.retarget(t, to, SLIDE_SECS);
+        }
     }
 
-    /// Look at time `t`. `flow` lets the light travel through the fill toward the edge;
-    /// when it stops being allowed, the sweep already under way still runs to the edge
-    /// and fades out instead of vanishing mid-way. No light while sliding, on an empty
-    /// plan or a finished one.
+    /// Look at time `t`. While `flow` holds, sweeps follow one another; a new sweep only
+    /// starts from the left once the fill is settled, and the sweep under way always
+    /// finishes. No light on an empty or finished plan.
     pub fn look(&mut self, t: f64, flow: bool) -> Look {
         let ratio = self.ratio.at(t);
-        let settled = !self.ratio.moving(t);
-        let able = ratio > 0.0 && ratio < 1.0 && settled;
-        if flow && able {
-            self.last_flow = Some(t);
+        if ratio <= 0.0 || ratio >= 1.0 {
+            self.cycle = None;
+            return Look { ratio, sweep: None };
         }
-        let finishing = self.last_flow.is_some_and(|last| {
-            let cycle_end = ((last / SWEEP_SECS).floor() + 1.0) * SWEEP_SECS;
-            t < cycle_end
-        });
+        if let Some(start) = self.cycle
+            && t >= start + SWEEP_SECS
+        {
+            self.cycle = (flow && !self.ratio.moving(t))
+                .then(|| start + SWEEP_SECS * ((t - start) / SWEEP_SECS).floor());
+        }
+        if self.cycle.is_none() && flow && !self.ratio.moving(t) {
+            self.cycle = Some(t);
+        }
         Look {
             ratio,
-            sweep: (able && (flow || finishing)).then(|| (t / SWEEP_SECS).rem_euclid(1.0)),
+            sweep: self
+                .cycle
+                .map(|start| ((t - start) / SWEEP_SECS).clamp(0.0, 1.0)),
         }
     }
 
@@ -269,11 +281,22 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
         .min(edge * 0.35)
         .max(2.0);
     let depth = (2.0 * half).min(edge * 0.35);
+    // Per-frame light geometry. Straight at first, fully bent into `>` by mid-way, so
+    // the arrow is what travels and fades; it runs a little past the edge so it slips
+    // out instead of being sliced by it.
+    let sweep = look.sweep.map(|phase| {
+        let bend = smooth((phase - 0.15) / 0.4);
+        let start = phase * (edge + 1.5 * band) - band / 2.0 - depth * bend;
+        let width_now = band * (1.0 - 0.35 * bend);
+        let fade = 1.0 - smooth((phase - 0.72) / 0.28);
+        (bend, start, width_now, fade)
+    });
     (0..rows)
         .map(|py| {
             // Distance of this pixel row from the vertical middle, 0 (middle) to 1 (edge).
             let y = (py as f64 + 0.5) / 2.0;
             let from_middle = ((y - half) / half).abs().min(1.0);
+            let at = sweep.map(|(bend, start, _, _)| start + bend * depth * (1.0 - from_middle));
             (0..width)
                 .map(|x| {
                     let center = x as f64 + 0.5;
@@ -283,40 +306,32 @@ fn pixels(p: &Palette, look: &Look, width: usize, height: usize) -> Vec<Vec<Colo
                         smooth((edge - center) / ramp)
                     };
                     let base = mix(p.track, p.fill, t);
-                    let Some(phase) = look.sweep else {
+                    let (Some((_, _, width_now, fade)), Some(at)) = (sweep, at) else {
                         return base;
                     };
-                    // The light may run a little past the edge so the arrow slips out and
-                    // melts away instead of being sliced by the straight edge.
                     if center > edge + band {
                         return base;
                     }
-                    // Straight at first, fully bent into `>` by mid-way, so the arrow is
-                    // what you see travelling and fading, not a straight band.
-                    let bend = smooth((phase - 0.15) / 0.4);
-                    let lead = bend * depth * (1.0 - from_middle);
-                    let at = phase * (edge + 1.5 * band) - band / 2.0 - depth * bend + lead;
-                    let width_now = band * (1.0 - 0.35 * bend);
                     let d = ((center - at) / (width_now / 2.0)).abs();
                     let head = if d < 1.0 {
                         0.5 + 0.5 * (std::f64::consts::PI * d).cos()
                     } else {
                         0.0
                     };
-                    // A soft tail behind the arrow fills the gap the faded gradient leaves
-                    // between the bar and the arrow, so it melts away instead of floating
-                    // off on its own. It shows where the fill has faded, not deep inside.
-                    // Measured from the arrow's centre so the head flows into the tail with
-                    // no dark notch; strongest where the gradient has faded.
+                    // A soft tail from the arrow's centre fills the gap the faded gradient
+                    // leaves between the bar and the arrow, with no dark notch; strongest
+                    // where the gradient has faded.
                     let behind = at - center;
                     let tail = if behind >= 0.0 {
                         (-behind / (band * 1.4)).exp() * 0.75 * (0.35 + 0.65 * (1.0 - t))
                     } else {
                         0.0
                     };
-                    let light = head.max(tail);
-                    let fade = 1.0 - smooth((phase - 0.72) / 0.28);
-                    mix(base, p.glow, 0.38 * light * fade * (0.65 + 0.35 * t))
+                    mix(
+                        base,
+                        p.glow,
+                        0.38 * head.max(tail) * fade * (0.65 + 0.35 * t),
+                    )
                 })
                 .collect()
         })
@@ -374,15 +389,7 @@ fn draw(
     if let Some(error) = error {
         middle.push(field("오래됨", error.to_string(), warn, p));
     }
-    // Two items in progress at once means the plan and the work disagree: show each.
-    let now_style = if doing.len() > 1 {
-        warn
-    } else {
-        Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
-    };
-    for item in &doing {
-        middle.push(field("지금", item.title.clone(), now_style, p));
-    }
+    // What needs someone's action comes first, so short panes never hide it.
     for item in &blocked {
         let mut text = format!(
             "{} — {}",
@@ -393,6 +400,15 @@ fn draw(
             text.push_str(&format!(" (필요: {needs})"));
         }
         middle.push(field("막힘", text, warn, p));
+    }
+    // Two items in progress at once means the plan and the work disagree: show each.
+    let now_style = if doing.len() > 1 {
+        warn
+    } else {
+        Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
+    };
+    for item in &doing {
+        middle.push(field("지금", item.title.clone(), now_style, p));
     }
     if doing.is_empty() && blocked.is_empty() {
         if total == 0 {
@@ -441,12 +457,33 @@ fn draw(
         Line::from(spans)
     };
     if area.height == 1 {
-        let now = doing
-            .first()
-            .map(|i| format!("지금 › {}", i.title))
-            .unwrap_or_default();
-        let line = Line::styled(format!("{metric}  {now}"), Style::new().fg(p.text));
-        frame.render_widget(Paragraph::new(clip(line)), rect(0));
+        // One row: the most important status, then the goal.
+        let (status, style) = if let Some(error) = error {
+            (format!("오래된 상태 · {error}"), warn)
+        } else if let Some(item) = blocked.first() {
+            (format!("막힘 › {}", item.title), warn)
+        } else if let Some(item) = doing.first() {
+            (format!("지금 › {}", item.title), now_style)
+        } else if total > 0 && done == total {
+            (
+                "✓ 완료".to_string(),
+                Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            ("계획 대기".to_string(), Style::new().fg(p.muted))
+        };
+        let line = Line::from(vec![
+            Span::styled(format!("{metric} · "), Style::new().fg(p.text)),
+            Span::styled(format!("{status} · "), style),
+            Span::styled(goal.to_string(), Style::new().fg(p.muted)),
+        ]);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        let line = if text.width() <= width as usize {
+            line
+        } else {
+            Line::styled(ellipsize(&text, width as usize), style)
+        };
+        frame.render_widget(Paragraph::new(line), rect(0));
     } else {
         let header_goal = if error.is_some() {
             format!("오래된 상태 · {goal}")
@@ -506,8 +543,24 @@ fn draw(
 /// glyph share one background so it stays legible.
 fn paint(frame: &mut Frame, p: &Palette, look: &Look) {
     let area = frame.area();
+    paint_buffer(frame.buffer_mut(), area, p, look, half_blocks());
+}
+
+/// `AP_HALF_BLOCKS=0` turns off `▀` pixels for terminals that draw ambiguous-width
+/// characters two columns wide; cells then get the averaged colour only.
+fn half_blocks() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("AP_HALF_BLOCKS").as_deref() != Ok("0"))
+}
+
+fn paint_buffer(
+    buf: &mut ratatui::buffer::Buffer,
+    area: Rect,
+    p: &Palette,
+    look: &Look,
+    half_blocks: bool,
+) {
     let px = pixels(p, look, usize::from(area.width), usize::from(area.height));
-    let buf = frame.buffer_mut();
     for r in 0..usize::from(area.height) {
         let y = area.y + r as u16;
         let (top, bottom) = (&px[2 * r], &px[2 * r + 1]);
@@ -519,7 +572,7 @@ fn paint(frame: &mut Frame, p: &Palette, look: &Look) {
                 continue;
             }
             let (t, b) = (top[c], bottom[c]);
-            if cell.symbol() == " " && t != b {
+            if half_blocks && cell.symbol() == " " && t != b {
                 cell.set_symbol("▀");
                 cell.fg = t;
                 cell.bg = b;
@@ -894,7 +947,7 @@ pub fn follow(panes: &Panes, instance: &str, idle_secs: u64) -> Result<()> {
     run(Store::at(state.plan), Some((panes, instance)), idle_secs)
 }
 
-/// Default for how long after the last record the edge keeps breathing.
+/// Default for how long after the last record the light keeps travelling.
 pub const IDLE_SECS: u64 = 300;
 
 fn file_mtime(path: &std::path::Path) -> Option<SystemTime> {
@@ -915,12 +968,19 @@ fn source_label(store: &Store) -> String {
         .to_string()
 }
 
+fn load(store: &Store) -> (Option<Plan>, Option<String>) {
+    match store.load() {
+        Ok(plan) => (plan, None),
+        // Never pretend an unreadable plan is empty.
+        Err(e) => (None, Some(e.to_string())),
+    }
+}
+
 fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Result<()> {
-    let mut plan = store.load().ok().flatten();
+    let (mut plan, mut error) = load(&store);
     let clock = Instant::now();
     let t = || clock.elapsed().as_secs_f64();
     let mut motion = Motion::snap(plan.as_ref());
-    let mut error: Option<String> = None;
     let mut seen = mtime(&store);
     let mut seen_pane = follow.and_then(|(panes, _)| file_mtime(&panes.path));
     let mut source = source_label(&store);
@@ -946,9 +1006,8 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Resu
                         }
                         if state.plan != store.path {
                             store = Store::at(state.plan);
-                            plan = store.load().ok().flatten();
+                            (plan, error) = load(&store);
                             motion = Motion::snap(plan.as_ref());
-                            error = None;
                             seen = mtime(&store);
                             source = source_label(&store);
                             colors = palette(&store);
@@ -978,7 +1037,8 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Resu
             let recent = plan
                 .as_ref()
                 .is_some_and(|p| crate::store::now().saturating_sub(p.updated_at) <= idle_secs);
-            let look = motion.look(t(), recent && error.is_none());
+            let now = t();
+            let look = motion.look(now, recent && error.is_none());
             terminal.draw(|f| {
                 if ui.mode == Mode::Bar && !ui.typing {
                     draw(f, &colors, plan.as_ref(), error.as_deref(), &source, &look)
@@ -988,7 +1048,10 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Resu
             })?;
             // ~8 fps only while something moves; otherwise a slow poll. ratatui redraws
             // only the cells that changed.
-            let tick = if motion.moving(t()) || look.sweep.is_some() {
+            // ~8 fps only while the bar is on screen and something moves; otherwise a
+            // slow poll. ratatui redraws only the cells that changed.
+            let bar = ui.mode == Mode::Bar && !ui.typing;
+            let tick = if bar && (motion.moving(now) || look.sweep.is_some()) {
                 125
             } else {
                 500
@@ -1059,6 +1122,25 @@ mod tests {
 
     fn screen(plan: &Plan, width: u16, height: u16) -> String {
         text_of(&render(plan, width, height, &Look::of(Some(plan))))
+    }
+
+    fn cells_json(buffer: &ratatui::buffer::Buffer) -> Vec<Vec<serde_json::Value>> {
+        let rgb = |c: Color| match c {
+            Color::Rgb(r, g, b) => vec![r, g, b],
+            _ => vec![],
+        };
+        let area = buffer.area;
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| {
+                        let c = &buffer[(x, y)];
+                        serde_json::json!({"s": c.symbol(), "fg": rgb(c.fg), "bg": rgb(c.bg),
+                            "b": c.modifier.contains(Modifier::BOLD)})
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
     fn plan(n: u32) -> Plan {
@@ -1202,7 +1284,7 @@ mod tests {
     }
 
     #[test]
-    fn light_travels_toward_the_edge_and_stays_inside_the_fill() {
+    fn light_travels_toward_the_edge() {
         let brightest = |phase: f64| {
             let look = Look {
                 ratio: 0.6,
@@ -1232,43 +1314,14 @@ mod tests {
         assert!(early < late, "light moves right: {early} -> {late}");
     }
 
-    fn lift_by_row(phase: f64) -> Vec<(usize, u8)> {
-        let plain = pixels(
-            &SIGNAL,
-            &Look {
-                ratio: 0.6,
-                sweep: None,
-            },
-            100,
-            7,
-        );
-        let lit = pixels(
-            &SIGNAL,
-            &Look {
-                ratio: 0.6,
-                sweep: Some(phase),
-            },
-            100,
-            7,
-        );
-        (0..14)
-            .map(|y| {
-                (0..100)
-                    .map(|x| (x, green(lit[y][x]).saturating_sub(green(plain[y][x]))))
-                    .max_by_key(|(_, l)| *l)
-                    .unwrap()
-            })
-            .collect()
-    }
-
     #[test]
     fn light_is_a_straight_band_first_then_bends_into_an_arrow() {
-        let early = lift_by_row(0.1);
+        let early = lift_at(0.6, 0.1);
         assert!(
             early.iter().all(|(x, _)| x.abs_diff(early[7].0) <= 1),
             "straight: {early:?}"
         );
-        let late = lift_by_row(0.85);
+        let late = lift_at(0.6, 0.85);
         assert!(late[7].0 > late[0].0 + 3, "middle leads: {late:?}");
         assert!(
             late[3].0 < late[7].0 && late[3].0 > late[0].0,
@@ -1395,7 +1448,7 @@ mod tests {
 
     #[test]
     fn light_fades_out_as_it_reaches_the_edge() {
-        let strength = |phase: f64| lift_by_row(phase).iter().map(|(_, l)| *l).max().unwrap();
+        let strength = |phase: f64| lift_at(0.6, phase).iter().map(|(_, l)| *l).max().unwrap();
         assert!(strength(0.5) > 0);
         assert!(
             strength(0.99) < strength(0.5) / 4,
@@ -1403,67 +1456,6 @@ mod tests {
             strength(0.99),
             strength(0.5)
         );
-    }
-
-    #[test]
-    fn a_stopped_flow_finishes_the_current_sweep() {
-        let mut p = plan(2);
-        p.set("1", State::Done, None, None).unwrap();
-        let mut motion = Motion::snap(Some(&p));
-        assert!(motion.look(1.0, true).sweep.is_some());
-        let mid = motion.look(1.5, false);
-        assert!(mid.sweep.is_some(), "the sweep under way keeps going");
-        assert!(motion.look(SWEEP_SECS - 0.01, false).sweep.is_some());
-        assert!(
-            motion.look(SWEEP_SECS + 0.01, false).sweep.is_none(),
-            "then stops"
-        );
-    }
-
-    #[test]
-    fn blank_cells_draw_two_pixels_and_text_cells_keep_their_text() {
-        let mut plan = plan(2);
-        plan.set("1", State::Done, None, None).unwrap();
-        let look = Look {
-            ratio: 0.5,
-            sweep: Some(0.85),
-        };
-        let terminal = render(&plan, 70, 7, &look);
-        let buffer = terminal.backend().buffer();
-        let halves = (0..7)
-            .flat_map(|y| (0..70).map(move |x| (x, y)))
-            .filter(|&(x, y)| buffer[(x, y)].symbol() == "▀")
-            .count();
-        assert!(halves > 0, "the bent light uses half-cell pixels");
-        assert!(text_of(&terminal).contains("지금›") || text_of(&terminal).contains("다음›항목2"));
-    }
-
-    #[test]
-    fn glyph_halves_share_a_background_on_the_gradient() {
-        let mut plan = Plan::new("t");
-        plan.goal = Some("가나다라마바사아자차카타파하".into());
-        plan.add("하나").unwrap();
-        plan.add("둘").unwrap();
-        plan.set("1", State::Done, None, None).unwrap();
-        for step in 0..20 {
-            let look = Look {
-                ratio: 0.5,
-                sweep: Some(f64::from(step) / 20.0),
-            };
-            let terminal = render(&plan, 70, 7, &look);
-            assert!(text_of(&terminal).contains("가나다라마바사아자차카타파하"));
-            let buffer = terminal.backend().buffer();
-            for y in 0..7 {
-                for x in 1..70 {
-                    // The backend never receives a wide glyph's continuation cell (the
-                    // terminal paints it with the glyph); check it when it is present.
-                    if buffer[(x - 1, y)].symbol().width() == 2 && buffer[(x, y)].bg != Color::Reset
-                    {
-                        assert_eq!(buffer[(x, y)].bg, buffer[(x - 1, y)].bg);
-                    }
-                }
-            }
-        }
     }
 
     #[test]
@@ -1487,25 +1479,169 @@ mod tests {
     }
 
     #[test]
-    fn light_only_when_settled_recent_and_unfinished() {
+    fn a_sweep_under_way_finishes_and_new_ones_start_from_the_left() {
+        let mut p = plan(4);
+        p.set("1", State::Done, None, None).unwrap();
+        let mut motion = Motion::snap(Some(&p));
+        assert_eq!(
+            motion.look(1.0, true).sweep,
+            Some(0.0),
+            "starts at the left"
+        );
+        // A completion slides the fill; the sweep under way keeps going through it.
+        p.set("2", State::Done, None, None).unwrap();
+        motion.update(2.0, Some(&p));
+        let during = motion.look(2.2, true).sweep.unwrap();
+        assert!(during > 0.3, "not cut by the slide: {during}");
+        // When it ends, the next sweep starts from the left again.
+        let next = motion.look(1.0 + SWEEP_SECS + 0.1, true).sweep.unwrap();
+        assert!(next < 0.1, "{next}");
+    }
+
+    #[test]
+    fn a_stopped_flow_finishes_the_current_sweep() {
         let mut p = plan(2);
         p.set("1", State::Done, None, None).unwrap();
         let mut motion = Motion::snap(Some(&p));
         assert!(motion.look(1.0, true).sweep.is_some());
         assert!(
-            motion.look(SWEEP_SECS + 0.5, false).sweep.is_none(),
-            "stale: no light once the sweep under way has finished"
+            motion.look(2.0, false).sweep.is_some(),
+            "the sweep under way keeps going"
         );
-        p.set("2", State::Done, None, None).unwrap();
+        assert!(motion.look(1.0 + SWEEP_SECS - 0.01, false).sweep.is_some());
+        assert!(
+            motion.look(1.0 + SWEEP_SECS + 0.01, false).sweep.is_none(),
+            "then stops"
+        );
+        assert!(
+            motion.look(9.0, false).sweep.is_none(),
+            "stale: no new sweep"
+        );
+    }
+
+    #[test]
+    fn no_light_on_empty_or_finished_plans_and_none_starts_mid_slide() {
+        assert!(
+            Motion::snap(Some(&plan(3))).look(1.0, true).sweep.is_none(),
+            "0%"
+        );
+        let mut p = plan(2);
+        p.set("1", State::Done, None, None).unwrap();
+        let mut motion = Motion::snap(None);
         motion.update(5.0, Some(&p));
         assert!(
             motion.look(5.1, true).sweep.is_none(),
-            "no light while sliding"
+            "no new sweep while sliding"
         );
-        assert!(motion.look(9.0, true).sweep.is_none(), "no light at 100%");
+        assert!(motion.look(5.0 + SLIDE_SECS + 0.01, true).sweep.is_some());
+        p.set("2", State::Done, None, None).unwrap();
+        motion.update(9.0, Some(&p));
         assert!(
-            Motion::snap(Some(&plan(3))).look(1.0, true).sweep.is_none(),
-            "none at 0%"
+            motion.look(9.0 + SLIDE_SECS + 0.1, true).sweep.is_none(),
+            "100%"
+        );
+    }
+
+    #[test]
+    fn lowering_progress_snaps_instead_of_draining() {
+        let mut p = plan(4);
+        for i in ["1", "2", "3"] {
+            p.set(i, State::Done, None, None).unwrap();
+        }
+        let mut motion = Motion::snap(Some(&p));
+        motion.update(1.0, Some(&plan(4)));
+        assert_eq!(motion.look(1.0, false).ratio, 0.0);
+        assert!(!motion.moving(1.0));
+    }
+
+    #[test]
+    fn a_short_pane_shows_the_blocker_before_work_in_progress() {
+        let mut plan = plan(3);
+        plan.set("2", State::Doing, None, None).unwrap();
+        plan.set(
+            "3",
+            State::Blocked,
+            Some("키필요".into()),
+            Some("user".into()),
+        )
+        .unwrap();
+        let text = screen(&plan, 80, 3);
+        assert!(text.contains("막힘›항목3—키필요(필요:user)"), "{text}");
+    }
+
+    #[test]
+    fn one_row_keeps_status_and_goal() {
+        let mut plan = plan(3);
+        plan.set("3", State::Blocked, Some("키".into()), None)
+            .unwrap();
+        let text = screen(&plan, 80, 1);
+        assert!(text.contains("0%·0/3·막힘›항목3·목표"), "{text}");
+        plan.set("3", State::Done, None, None).unwrap();
+        plan.set("1", State::Done, None, None).unwrap();
+        plan.set("2", State::Done, None, None).unwrap();
+        assert!(screen(&plan, 80, 1).contains("✓완료"));
+    }
+
+    #[test]
+    fn an_unreadable_plan_is_reported_not_shown_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("p.json");
+        std::fs::write(&file, "{broken").unwrap();
+        let (plan, error) = load(&Store::at(file));
+        assert!(plan.is_none());
+        assert!(error.is_some_and(|e| e.contains("손상")));
+    }
+
+    fn painted(text: &[(u16, u16, &str)], look: &Look, half: bool) -> ratatui::buffer::Buffer {
+        let area = Rect::new(0, 0, 70, 7);
+        let mut buf = ratatui::buffer::Buffer::empty(area);
+        for (x, y, s) in text {
+            buf.set_string(*x, *y, s, Style::new());
+        }
+        paint_buffer(&mut buf, area, &SIGNAL, look, half);
+        buf
+    }
+
+    #[test]
+    fn glyph_halves_share_a_background_and_text_is_kept() {
+        let text = [(0, 3, "가나다라마바사아자차카타파하 abc")];
+        for step in 0..20 {
+            let look = Look {
+                ratio: 0.5,
+                sweep: Some(f64::from(step) / 20.0),
+            };
+            let buf = painted(&text, &look, true);
+            let row: String = (0..70).map(|x| buf[(x, 3)].symbol()).collect();
+            assert!(
+                row.replace(' ', "")
+                    .starts_with("가나다라마바사아자차카타파하abc"),
+                "{row}"
+            );
+            for x in 1..70 {
+                if buf[(x - 1, 3)].symbol().width() == 2 {
+                    assert_eq!(buf[(x, 3)].bg, buf[(x - 1, 3)].bg, "glyph at {}", x - 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn half_blocks_only_in_blank_cells_and_can_be_turned_off() {
+        let look = Look {
+            ratio: 0.5,
+            sweep: Some(0.6),
+        };
+        let buf = painted(&[(0, 3, "지금 › 항목")], &look, true);
+        let halves = (0..7)
+            .flat_map(|y| (0..70).map(move |x| (x, y)))
+            .filter(|&(x, y)| buf[(x, y)].symbol() == "▀")
+            .count();
+        assert!(halves > 0, "the light uses half-cell pixels");
+        assert_eq!(buf[(0, 3)].symbol(), "지", "text stays");
+        let off = painted(&[], &look, false);
+        assert!(
+            (0..7).all(|y| (0..70).all(|x| off[(x, y)].symbol() == " ")),
+            "AP_HALF_BLOCKS=0 draws no glyphs"
         );
     }
 
@@ -1670,21 +1806,7 @@ mod tests {
                 .draw(|f| draw(f, &theme, Some(&plan), None, "plans/x.json", &look))
                 .unwrap();
             let buffer = terminal.backend().buffer();
-            let rgb = |c: Color| match c {
-                Color::Rgb(r, g, b) => vec![r, g, b],
-                _ => vec![],
-            };
-            let cells: Vec<Vec<serde_json::Value>> = (0..7)
-                .map(|y| {
-                    (0..96)
-                        .map(|x| {
-                            let c = &buffer[(x, y)];
-                            serde_json::json!({"s": c.symbol(), "fg": rgb(c.fg), "bg": rgb(c.bg),
-                                "b": c.modifier.contains(Modifier::BOLD)})
-                        })
-                        .collect()
-                })
-                .collect();
+            let cells = cells_json(buffer);
             std::fs::write(
                 dir.join(format!("{name}.json")),
                 serde_json::to_vec(&cells).unwrap(),
@@ -1740,21 +1862,7 @@ mod tests {
             let look = motion.look(t, true);
             let terminal = render(&plan, width, height, &look);
             let buffer = terminal.backend().buffer();
-            let rgb = |c: Color| match c {
-                Color::Rgb(r, g, b) => vec![r, g, b],
-                _ => vec![],
-            };
-            let cells: Vec<Vec<serde_json::Value>> = (0..height)
-                .map(|y| {
-                    (0..width)
-                        .map(|x| {
-                            let c = &buffer[(x, y)];
-                            serde_json::json!({"s": c.symbol(), "fg": rgb(c.fg), "bg": rgb(c.bg),
-                                "b": c.modifier.contains(Modifier::BOLD)})
-                        })
-                        .collect()
-                })
-                .collect();
+            let cells = cells_json(buffer);
             writeln!(out, "{}", serde_json::to_string(&cells).unwrap()).unwrap();
             frame += 1;
         }

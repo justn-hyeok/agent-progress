@@ -18,7 +18,15 @@
   When recording goes quiet the sweep under way finishes instead of vanishing.
   No light at 100% or on stale data; ~8 fps only while moving, 2 fps otherwise.
 - The bar is drawn at twice the vertical resolution: blank cells show two pixels
-  with `▀`, cells with text get the average so text is untouched.
+  with `▀`, cells with text get the average so text is untouched. `AP_HALF_BLOCKS=0`
+  turns the glyphs off for terminals that draw ambiguous-width characters wide.
+- A soft tail behind the light fills the gap to the bar. A sweep under way always
+  finishes (through a completion slide or when recording stops); the next starts
+  from the left once the fill settles. Lower progress snaps instead of draining.
+- Blockers come before work in progress so short panes never hide them; the
+  one-row layout keeps the status (stale, blocked, now, done) and the goal; a plan
+  unreadable at viewer start or plan switch is reported, not shown empty;
+  `ap view --idle-secs` is honoured; the fast tick runs only while the bar is shown.
 - Percent shows up to two decimals (1/2 → 50%, 2/3 → 66.67%), rounded, but 100%
   only when everything is done and at least 0.01% once anything is.
 - Default theme is a cool deep green (fill #1F4842, track #0C1316) with a mint

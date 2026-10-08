@@ -81,7 +81,7 @@ enum Cmd {
         /// 진행 창이 따라갈 pane 상태 파일 (내부용)
         #[arg(long, hide = true)]
         pane_state: Option<PathBuf>,
-        /// 마지막 기록 후 이 시간(초)이 지나면 숨쉬기 표시를 멈춥니다 (기본 AP_IDLE_SECS 또는 300)
+        /// 마지막 기록 후 이 시간(초)이 지나면 흐르는 빛을 멈춥니다 (기본 AP_IDLE_SECS 또는 300)
         #[arg(long)]
         idle_secs: Option<u64>,
     },
@@ -445,12 +445,14 @@ fn run() -> Result<()> {
             }
             return Ok(());
         }
-        Cmd::View { once, .. } => {
+        Cmd::View {
+            once, idle_secs, ..
+        } => {
             if once {
                 println!("{}", view::summary(ctx.store.load()?.as_ref()));
                 return Ok(());
             }
-            return view::watch(&ctx.store, idle_default());
+            return view::watch(&ctx.store, idle_secs.unwrap_or_else(idle_default));
         }
         Cmd::Open => {
             match ctx.ensure_view(true)? {

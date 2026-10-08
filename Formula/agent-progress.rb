@@ -1,8 +1,8 @@
 class AgentProgress < Formula
   desc "Terminal progress pane for coding agent plans"
   homepage "https://github.com/justn-hyeok/agent-progress"
-  url "https://github.com/justn-hyeok/agent-progress/releases/download/v3.3.1/agent-progress-3.3.1-macos-arm64.tar.gz"
-  sha256 "399e7f1eb6e6c0f57faca7a8e596320c623d209f7fea566d1cc5a12358db5b0e"
+  url "https://github.com/justn-hyeok/agent-progress/releases/download/v3.4.0/agent-progress-3.4.0-macos-arm64.tar.gz"
+  sha256 "a3b05716135c57664da72fc9a9816f62936b14960b3191c17adcb68fe03b412c"
 
   depends_on arch: :arm64
   depends_on :macos
@@ -15,8 +15,9 @@ class AgentProgress < Formula
 
   def caveats
     <<~EOS
-      To let coding agents (Claude Code, Codex, Cursor, …) use ap on their own:
+      To let coding agents (Claude Code, Codex, Cursor, …) record with ap on their own:
         ap skill install
+      Then run `ap open` in an agent's pane to watch its progress.
     EOS
   end
 

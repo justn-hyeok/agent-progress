@@ -281,7 +281,7 @@ fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
     }
     let edge = look.ratio * width as f64;
     let g = look.glow.unwrap_or(0.0);
-    let ramp = (width as f64 / 5.0).clamp(3.0, 14.0).min(edge.max(1.0));
+    let ramp = (width as f64 * 0.35).clamp(6.0, 40.0).min(edge.max(1.0));
     // The fill keeps its gradient into the track at every stage.
     let body = |center: f64| {
         let t = smooth((edge - center) / ramp);
@@ -321,7 +321,7 @@ fn arrow_cells(edge: f64, width: usize, height: usize) -> Vec<Vec<usize>> {
     let c = height.saturating_sub(1) as f64 / 2.0;
     let arm_rows = c.min(3.0);
     let tip = edge.floor() as isize;
-    let shaft = ((width as f64) * 0.08).clamp(4.0, 10.0) as isize;
+    let shaft = ((width as f64) * 0.2).clamp(8.0, 24.0) as isize;
     (0..height)
         .map(|r| {
             let d = (r as f64 - c).abs();

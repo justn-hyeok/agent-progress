@@ -12,7 +12,7 @@
 
 ## 설치
 
-macOS Apple Silicon용입니다.
+macOS Apple Silicon용입니다. Linux는 검증하지 않았고, Windows는 지원하지 않습니다(pane 확인에 `ps`를 씁니다).
 
 ```sh
 brew tap justn-hyeok/agent-progress https://github.com/justn-hyeok/agent-progress

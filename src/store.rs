@@ -221,22 +221,40 @@ pub fn project_root(cwd: &Path) -> PathBuf {
         .unwrap_or_else(|| cwd.to_path_buf())
 }
 
+/// File-name-safe form of a plan key. Letters and digits of any script (e.g. Korean)
+/// are kept as is; `:` and `%` from pane IDs become `_` as before, so existing plan
+/// files keep their names. Any other character that has to be replaced makes the name
+/// lossy, so a short hash of the original key is appended to keep distinct keys apart.
 pub fn sanitize(key: &str) -> String {
+    let mut lossy = false;
     let s: String = key
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
                 c
             } else {
+                lossy |= c != ':' && c != '%';
                 '_'
             }
         })
         .collect();
-    if s.is_empty() || s.starts_with('.') {
+    let s = if s.is_empty() || s.starts_with('.') {
         format!("_{s}")
     } else {
         s
+    };
+    if lossy {
+        format!("{s}-{:08x}", fnv1a(key))
+    } else {
+        s
     }
+}
+
+/// Stable 32-bit FNV-1a; only used to keep lossy file names apart.
+fn fnv1a(text: &str) -> u32 {
+    text.bytes().fold(0x811c_9dc5, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    })
 }
 
 /// Plans are local working state: keep the whole `.agent-progress` folder out of Git
@@ -402,5 +420,27 @@ mod tests {
         assert_eq!(p(1, 20_000).as_deref(), Some("0.01"), "not 0 once started");
         assert_eq!(p(0, 27).as_deref(), Some("0"));
         assert_eq!(p(27, 27).as_deref(), Some("100"));
+    }
+
+    #[test]
+    fn plan_names_in_any_script_stay_apart() {
+        use super::sanitize;
+        assert_eq!(sanitize("가나"), "가나");
+        assert_ne!(sanitize("가나"), sanitize("다라"));
+        assert_ne!(sanitize("a b"), sanitize("a_b"));
+        assert_ne!(sanitize("a/b"), sanitize("a?b"));
+        assert_eq!(sanitize("a b"), sanitize("a b"), "stable");
+        // Existing pane-keyed files keep their names.
+        assert_eq!(sanitize("herdr-w6G:p1"), "herdr-w6G_p1");
+        assert_eq!(sanitize("tmux-%3"), "tmux-_3");
+        assert_eq!(
+            sanitize("codex-01a10e64-4fe6-7270-b08a-90affd372df5"),
+            "codex-01a10e64-4fe6-7270-b08a-90affd372df5"
+        );
+        assert!(
+            sanitize("../x").starts_with('_'),
+            "never a hidden or parent path"
+        );
+        assert!(!sanitize("a/../b").contains('/'));
     }
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.1 — 2026-10-08
+
+- Plan names in any script keep their own file: letters and digits of any
+  language stay in the file name (`ap --plan 가나` → `가나.json`), and a name that
+  needs other characters replaced gets a short hash, so `가나`/`다라` or `a b`/`a_b`
+  no longer share one file. Pane-keyed files (`herdr-…`, `tmux-…`, `codex-…`) keep
+  their names. A `--plan` name with spaces or symbols now maps to a new file name.
+- README states the platform scope (macOS; Linux unverified; no Windows).
+
 ## 3.3.0 — 2026-10-08
 
 - README rewritten around a real TUI recording (`docs/media/progress.gif`,

@@ -1046,8 +1046,6 @@ fn run(mut store: Store, follow: Option<(&Panes, &str)>, idle_secs: u64) -> Resu
                     draw_panel(f, &colors, plan.as_ref(), &ui, &history)
                 }
             })?;
-            // ~8 fps only while something moves; otherwise a slow poll. ratatui redraws
-            // only the cells that changed.
             // ~8 fps only while the bar is on screen and something moves; otherwise a
             // slow poll. ratatui redraws only the cells that changed.
             let bar = ui.mode == Mode::Bar && !ui.typing;

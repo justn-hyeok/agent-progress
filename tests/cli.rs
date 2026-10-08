@@ -352,3 +352,13 @@ fn percent_has_two_decimals_with_honest_ends() {
     ok(dir.path(), &["done", "18"]);
     assert!(ok(dir.path(), &["status"]).contains("18/18 (100%)"));
 }
+
+#[test]
+fn korean_plan_names_do_not_share_a_file() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["--plan", "가나", "add", "첫째"]);
+    ok(dir.path(), &["--plan", "다라", "add", "둘째"]);
+    assert!(ok(dir.path(), &["--plan", "가나", "status"]).contains("첫째"));
+    assert!(!ok(dir.path(), &["--plan", "가나", "status"]).contains("둘째"));
+    assert!(dir.path().join(".agent-progress/plans/가나.json").is_file());
+}

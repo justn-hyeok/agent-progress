@@ -54,16 +54,17 @@ struct Palette {
     glow: Color,
 }
 
-/// Signal preset with the brighter fill and secondary text the user tuned in 1.x.
+/// Signal preset in deep green: cool fill and a mint travelling light (no yellow cast),
+/// with the brighter secondary text the user tuned in 1.x.
 const SIGNAL: Palette = Palette {
-    track: Color::Rgb(0x0F, 0x14, 0x18),
-    fill: Color::Rgb(0x34, 0x54, 0x3B),
+    track: Color::Rgb(0x0E, 0x13, 0x16),
+    fill: Color::Rgb(0x24, 0x49, 0x3A),
     accent: Color::Rgb(0xC7, 0xF9, 0x6C),
     text: Color::Rgb(0xF2, 0xF5, 0xEE),
     muted: Color::Rgb(0xC4, 0xD0, 0xC6),
     metadata: Color::Rgb(0xB6, 0xC4, 0xBA),
     warning: Color::Rgb(0xF5, 0xC2, 0x6F),
-    glow: Color::Rgb(0x6C, 0xC4, 0x92),
+    glow: Color::Rgb(0x5F, 0xD3, 0xA0),
 };
 
 fn hex(value: Option<&serde_json::Value>) -> Option<Color> {

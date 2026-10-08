@@ -10,7 +10,7 @@
   was recorded within `AP_IDLE_SECS` (default 300, passed to the viewer as
   `--idle-secs`) a soft band of light travels through the fill toward the edge,
   fading with the gradient; it stops at 100% and on stale data. ~8 fps only
-  while moving, 2 fps otherwise. Light and arrow colours stay cool (no yellow).
+  while moving, 2 fps otherwise. Default theme is deep green (fill #24493A, track #0E1316) with a mint light (#5FD3A0).
 
 ## 3.2.0 — 2026-10-08
 

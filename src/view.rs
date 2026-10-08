@@ -302,8 +302,11 @@ fn fill_cells(p: &Palette, look: &Look, width: usize, height: usize) -> Fill {
                     p.track
                 };
                 if cells.contains(&x) {
-                    // Draw the `->` over the fading fill, faded in as the arrow appears.
-                    mix(base, head, look.arrow)
+                    // The `->` follows the same gradient as the fill, but stays stronger:
+                    // full head colour deep in the fill, still 55% at the tip.
+                    let t = smooth((edge - (x as f64 + 0.5)) / ramp);
+                    let arrow = mix(p.track, head, 0.55 + 0.45 * t);
+                    mix(base, arrow, look.arrow)
                 } else {
                     base
                 }
@@ -1249,7 +1252,18 @@ mod tests {
             &row[50..60]
         );
         assert_eq!(row[60], SIGNAL.track);
-        assert_eq!(rows[3][59], SIGNAL.head, "arrow tip at the edge");
+        // The arrow fades with the fill but stays stronger than it, even at the tip.
+        let green = |c: Color| match c {
+            Color::Rgb(_, g, _) => g,
+            _ => 0,
+        };
+        assert!(green(rows[3][59]) > green(rows[0][59]), "tip stands out");
+        assert!(green(rows[3][59]) < green(SIGNAL.head), "tip is faded");
+        let shaft: Vec<u8> = rows[3][45..60].iter().map(|c| green(*c)).collect();
+        assert!(
+            shaft.windows(2).all(|w| w[1] <= w[0]),
+            "fades toward the tip: {shaft:?}"
+        );
     }
 
     #[test]

@@ -1,5 +1,19 @@
 # Current release plan
 
+## Plan conflicts (#11) and lock wait (#3) — 2026-11-03
+
+Released in 3.5.0. Evidence from the real
+`nikke-api` plan history: subagents replaced the goal five times in a minute and
+their `start 1` reopened the parent's finished item; the parent's items were kept
+in an archive, not lost. See CHANGELOG 3.5.0 for the behavior changes.
+
+- [x] [AP-05/plan-conflicts] Goal guard, other-worktree hint, bounded lock wait, skill rules.
+- [ ] [AP-05/subagent-live] Confirm in a real session that subagents follow the new skill rule.
+
+Subagents are told not to run `ap`; nothing enforces it. A subagent can still run
+`ap add`, `ap done 1` or `ap new` on its parent's plan, because `ap` cannot tell it
+apart from the parent in the same pane.
+
 ## Minimal CLI redesign — 2026-10-06
 
 User decision (2026-10-06): the v2 work-record protocol and the 1.x native

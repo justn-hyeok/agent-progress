@@ -53,7 +53,8 @@ ap block 2 "스테이징 키 필요" --needs user
 ap cancel 3 "범위 밖"
 ap todo 2            # 다시 예정으로
 ap rm 3              # 잘못 넣은 항목 지우기 (다른 번호는 그대로)
-ap new               # 지금 계획을 보관하고 새로 시작
+ap new               # 지금 계획을 보관하고 새로 시작 (새 작업은 여기서 시작)
+ap goal --edit "…"   # 같은 작업의 목표 문구만 고치기
 ap status            # 지금 계획 출력 (--json)
 ap history           # 변경 이력 (JSONL)
 ap open / ap close   # 이 pane의 진행 창 열기 / 닫기 (기본으로는 저절로 열리지 않음)
@@ -115,6 +116,10 @@ ap view              # 지금 터미널에서 진행 창 실행
 
 - 계획은 Git 루트(없으면 현재 디렉터리)의 `.agent-progress/plans/<key>.json`에 저장되므로 하위
   디렉터리에서 실행해도 같은 계획을 씁니다. `.agent-progress/.gitignore`를 자동으로 만들어 커밋되지 않습니다.
+- worktree는 Git 루트가 달라 계획도 따로입니다. 이 폴더에 계획이 없는데 같은 키의 계획이 다른 worktree에
+  있으면 `ap status`와 항목 명령이 그 경로를 알려줍니다.
+- 같은 pane을 물려받은 서브에이전트는 부모와 같은 계획을 쓰므로 `ap`를 직접 부르지 않습니다. 항목이 있는
+  계획의 목표를 다른 문구로 바꾸는 `ap goal`은 거부됩니다.
 - 같은 pane ID가 다른 terminal에 재사용되면 이전 계획은 보관되고 새로 시작합니다.
 - Codex와 Cline은 명령을 공유 데몬에서 실행해 `HERDR_PANE_ID`가 다른 pane을 가리키거나 아예 없습니다.
   후보가 정확히 하나일 때만 열고, 없거나 여럿이면 열지 않고 `ap --plan <key> view` 사용법을 알려줍니다.

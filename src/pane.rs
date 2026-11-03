@@ -3,9 +3,8 @@
 //! whether the user dismissed it. Plans themselves carry no viewer state, so working
 //! on several projects from one pane switches the same viewer instead of stacking new ones.
 
-use crate::store::{Viewer, now, sanitize};
+use crate::store::{Viewer, lock_file, now, sanitize};
 use anyhow::{Context, Result};
-use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -81,7 +80,7 @@ impl Panes {
             .truncate(false)
             .write(true)
             .open(&self.lock)?;
-        lock.lock_exclusive()?;
+        lock_file(&lock, &self.lock)?;
         let mut state = self.load().unwrap_or_default();
         f(&mut state);
         state.updated_at = now();

@@ -6,8 +6,11 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::Command,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+/// How long a command waits for another writer before reporting the lock as stuck.
+const LOCK_WAIT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -106,6 +109,24 @@ impl Plan {
             ((done, total), Some(pct)) => format!("{done}/{total} ({pct}%)"),
             _ => "미정".into(),
         }
+    }
+
+    /// Set the goal. Items belong to the goal they were added under, so a different goal
+    /// on a plan with items is refused unless `edit` says it is only a rewording.
+    pub fn set_goal(&mut self, text: &str, edit: bool) -> Result<()> {
+        let text = text.trim();
+        if !edit
+            && !self.items.is_empty()
+            && let Some(current) = self.goal.as_deref()
+            && current != text
+        {
+            bail!(
+                "이 계획에는 이미 목표 '{current}'와 항목 {}개가 있어 목표를 바꾸지 않았습니다. 새 작업이면 `ap new` 뒤에 다시 실행하고, 문구만 고치려면 `ap goal --edit`을 쓰세요. 서브에이전트라면 부모의 계획이므로 ap를 쓰지 마세요",
+                self.items.len()
+            );
+        }
+        self.goal = Some(text.to_string()).filter(|s| !s.is_empty());
+        Ok(())
     }
 
     pub fn find(&self, selector: &str) -> Result<usize> {
@@ -221,6 +242,49 @@ pub fn project_root(cwd: &Path) -> PathBuf {
         .unwrap_or_else(|| cwd.to_path_buf())
 }
 
+/// The other checkouts of this Git repository. Each has its own plans.
+pub fn other_worktrees(root: &Path) -> Vec<PathBuf> {
+    let here = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.strip_prefix("worktree "))
+        .map(PathBuf::from)
+        .filter(|p| p.canonicalize().is_ok_and(|p| p != here))
+        .collect()
+}
+
+/// Take an exclusive lock, waiting a bounded time so a stuck writer cannot hang every
+/// later command.
+pub fn lock_file(file: &File, path: &Path) -> Result<()> {
+    lock_within(file, path, LOCK_WAIT)
+}
+
+fn lock_within(file: &File, path: &Path, wait: Duration) -> Result<()> {
+    let start = Instant::now();
+    loop {
+        match file.try_lock_exclusive() {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == fs2::lock_contended_error().kind() => {
+                ensure!(
+                    start.elapsed() < wait,
+                    "{}초 기다렸지만 잠금이 풀리지 않았습니다: {}",
+                    wait.as_secs(),
+                    path.display()
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
 /// File-name-safe form of a plan key. Letters and digits of any script (e.g. Korean)
 /// are kept as is; `:` and `%` from pane IDs become `_` as before, so existing plan
 /// files keep their names. Any other character that has to be replaced makes the name
@@ -327,7 +391,7 @@ impl Store {
             .truncate(false)
             .write(true)
             .open(&self.lock)?;
-        lock.lock_exclusive()?;
+        lock_file(&lock, &self.lock)?;
         let mut plan = self.load()?.unwrap_or_else(|| Plan::new(key));
         let out = f(&mut plan)?;
         plan.updated_at = now();
@@ -365,7 +429,7 @@ impl Store {
             .truncate(false)
             .write(true)
             .open(&self.lock)?;
-        lock.lock_exclusive()?;
+        lock_file(&lock, &self.lock)?;
         let stem = self
             .path
             .file_name()
@@ -401,7 +465,20 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    use super::percent;
+    use super::{Duration, File, FileExt, lock_within, percent};
+
+    #[test]
+    fn a_held_lock_fails_within_the_limit_and_works_once_released() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plan.lock");
+        let holder = File::create(&path).unwrap();
+        holder.lock_exclusive().unwrap();
+        let waiter = File::open(&path).unwrap();
+        let err = lock_within(&waiter, &path, Duration::from_millis(50)).unwrap_err();
+        assert!(err.to_string().contains("plan.lock"), "{err}");
+        drop(holder);
+        lock_within(&waiter, &path, Duration::from_millis(50)).unwrap();
+    }
 
     #[test]
     fn percent_has_two_decimals_but_never_overstates_the_ends() {

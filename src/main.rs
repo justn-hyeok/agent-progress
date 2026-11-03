@@ -27,8 +27,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 목표를 설정합니다
-    Goal { text: String },
+    /// 목표를 설정합니다. 항목이 있는 계획의 다른 목표로는 바꾸지 않습니다 (`ap new` 사용)
+    Goal {
+        text: String,
+        /// 같은 작업의 목표 문구만 고칩니다
+        #[arg(long)]
+        edit: bool,
+    },
     /// 항목을 추가합니다. 번호는 한 번 정해지면 바뀌지 않습니다
     Add {
         #[arg(required = true)]
@@ -332,6 +337,29 @@ fn print_plan(plan: &Plan) {
     println!("{}", view::summary(Some(plan)));
 }
 
+/// Plans live per Git root, so from another worktree this key has no plan. Say where it
+/// is instead of leaving only "계획 없음" or "항목이 없습니다".
+fn hint_other_worktrees(ctx: &Ctx) {
+    if !matches!(ctx.store.load(), Ok(None)) {
+        return;
+    }
+    for root in store::other_worktrees(&ctx.root) {
+        if let Ok(Some(plan)) = Store::new(&root, &ctx.key).load()
+            && !plan.items.is_empty()
+            && (ctx.terminal.is_none()
+                || plan.terminal_id.is_none()
+                || plan.terminal_id == ctx.terminal)
+        {
+            let summary = view::summary(Some(&plan));
+            eprintln!(
+                "ap: 이 폴더에는 이 계획이 없습니다. 다른 worktree에 있습니다: {} ({})",
+                root.display(),
+                summary.lines().next().unwrap_or_default()
+            );
+        }
+    }
+}
+
 fn main() {
     // Behave like other CLIs when output is piped into `head`: exit quietly instead
     // of panicking on a closed pipe.
@@ -378,13 +406,22 @@ fn run() -> Result<()> {
     }
     let ctx = context(cli.plan)?;
     let command = cli.command.unwrap_or(Cmd::Status { json: false });
+    if matches!(
+        command,
+        Cmd::Status { .. }
+            | Cmd::Start { .. }
+            | Cmd::Done { .. }
+            | Cmd::Block { .. }
+            | Cmd::Cancel { .. }
+            | Cmd::Todo { .. }
+            | Cmd::Rm { .. }
+    ) {
+        hint_other_worktrees(&ctx);
+    }
     let plan = match command {
-        Cmd::Goal { text } => {
-            ctx.update(&format!("goal {text}"), |p| {
-                p.goal = Some(text.trim().to_string()).filter(|s| !s.is_empty());
-                Ok(())
-            })?
-            .0
+        Cmd::Goal { text, edit } => {
+            ctx.update(&format!("goal {text}"), |p| p.set_goal(&text, edit))?
+                .0
         }
         Cmd::Add { titles } => {
             ctx.update(&format!("add {}", titles.join(" | ")), |p| {

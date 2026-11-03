@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.5.0 — 2026-11-03
+
+- `ap goal` refuses a different goal while the plan has items, so a new task no
+  longer inherits old items and progress, and a subagent cannot silently rename
+  its parent's plan. Use `ap new` for a new task, or `ap goal --edit` to reword.
+- When this folder has no plan, `ap status` and item commands name the other
+  worktree that holds the same key's plan.
+- Lock waits are limited to 10 seconds and then report the stuck lock file.
+- The skill and the Claude Code block tell subagents sharing a pane not to run
+  `ap`, and tell agents not to assume a new item is number 1.
+
 ## 3.4.0 — 2026-10-08
 
 - The progress pane no longer opens on its own: recording just records, and

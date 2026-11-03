@@ -362,3 +362,108 @@ fn korean_plan_names_do_not_share_a_file() {
     assert!(!ok(dir.path(), &["--plan", "가나", "status"]).contains("둘째"));
     assert!(dir.path().join(".agent-progress/plans/가나.json").is_file());
 }
+
+#[test]
+fn a_different_goal_is_refused_while_the_plan_has_items() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["goal", "부모 작업"]);
+    ok(dir.path(), &["goal", "아직 항목 없음"]);
+    ok(dir.path(), &["add", "a"]);
+    ok(dir.path(), &["done", "1"]);
+    ok(dir.path(), &["goal", "아직 항목 없음"]);
+    let out = ap(dir.path(), &["goal", "다른 작업"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("ap new"));
+    assert_eq!(json(dir.path())["goal"], "아직 항목 없음");
+    assert!(!ok(dir.path(), &["history"]).contains("다른 작업"));
+    ok(dir.path(), &["goal", "--edit", "고친 문구"]);
+    let plan = json(dir.path());
+    assert_eq!(plan["goal"], "고친 문구");
+    assert_eq!(plan["items"][0]["state"], "done", "rewording keeps items");
+    ok(dir.path(), &["new"]);
+    ok(dir.path(), &["goal", "다른 작업"]);
+    assert!(ok(dir.path(), &["status"]).contains("다른 작업 · 미정"));
+}
+
+#[test]
+fn parallel_writers_keep_the_goal_and_every_item() {
+    let dir = tempfile::tempdir().unwrap();
+    ok(dir.path(), &["goal", "부모 작업"]);
+    ok(dir.path(), &["add", "부모 항목"]);
+    let handles: Vec<_> = (0..12)
+        .map(|n| {
+            let path = dir.path().to_path_buf();
+            std::thread::spawn(move || {
+                let replaced = ap(&path, &["goal", &format!("작업{n}")]).status.success();
+                ok(&path, &["add", &format!("항목{n}")]);
+                replaced
+            })
+        })
+        .collect();
+    assert!(handles.into_iter().all(|h| !h.join().unwrap()));
+    let plan = json(dir.path());
+    assert_eq!(plan["goal"], "부모 작업");
+    assert_eq!(plan["items"].as_array().unwrap().len(), 13);
+    assert_eq!(plan["items"][0]["title"], "부모 항목");
+}
+
+fn git(dir: &Path, args: &[&str]) {
+    let done = Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .args(args)
+        .current_dir(dir)
+        .status()
+        .unwrap();
+    assert!(done.success(), "git {args:?}");
+}
+
+#[test]
+fn a_missing_plan_points_to_the_other_worktree() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let linked = dir.path().join("linked");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            linked.to_str().unwrap(),
+            "-b",
+            "wt",
+        ],
+    );
+    let stderr = |args: &[&str]| String::from_utf8(ap(&linked, args).stderr).unwrap();
+    assert!(
+        !stderr(&["status"]).contains("다른 worktree"),
+        "no plan yet"
+    );
+    ok(&repo, &["goal", "원래 작업"]);
+    assert!(
+        !stderr(&["status"]).contains("다른 worktree"),
+        "no items yet"
+    );
+    ok(&repo, &["add", "a"]);
+
+    let status = stderr(&["status"]);
+    assert!(status.contains("다른 worktree"), "{status}");
+    assert!(status.contains("원래 작업 · 0/1"), "{status}");
+    let done = ap(&linked, &["done", "1"]);
+    assert!(!done.status.success());
+    let message = String::from_utf8_lossy(&done.stderr);
+    assert!(message.contains("다른 worktree"), "{message}");
+    assert!(message.contains("1번 항목이 없습니다"), "{message}");
+    assert!(
+        ok(&repo, &["status"]).contains("0/1"),
+        "other plan untouched"
+    );
+
+    ok(&linked, &["add", "b"]);
+    assert!(
+        !stderr(&["status"]).contains("다른 worktree"),
+        "has its own"
+    );
+}

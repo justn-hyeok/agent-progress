@@ -2,7 +2,16 @@
 
 ## Plan conflicts (#11) and lock wait (#3) — 2026-11-03
 
-Released in 3.5.0. Evidence from the real
+3.5.0 (2026-11-03): https://github.com/justn-hyeok/agent-progress/releases/tag/v3.5.0 (Latest)
+Tag/source cc29c530c72de46bb55ffd5f917311daadfaf4f5 passed Rust CI 41592181473.
+Archive SHA-256 e9d33315d75c1d2ea8afba98e4005d3cd20294d4fc004f94c087c6dfa6f92900
+(repack byte-identical, 3.4.0 → 3.5.0 smoke, downloaded asset matched). Formula
+b5e0c50 passed Homebrew install CI 41592365154 and Rust CI 41592365227; brew
+upgrade/test/audit and ~/.local on this Mac. `ap skill install` updated the shared
+skill and the one marked CLAUDE.md block; GJC skill copy refreshed; agents stack
+verify OK (static checks).
+
+Evidence from the real
 `nikke-api` plan history: subagents replaced the goal five times in a minute and
 their `start 1` reopened the parent's finished item; the parent's items were kept
 in an archive, not lost. See CHANGELOG 3.5.0 for the behavior changes.

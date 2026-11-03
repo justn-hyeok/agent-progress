@@ -1,8 +1,13 @@
 # Release handoff
 
-3.4.0 is the latest release (3.3 progress pane redesign, a plan-name collision
-fix, and the pane opening only on `ap open`; see docs/current-plan.md
-for evidence). Installed via Homebrew and ~/.local on this Mac.
+3.5.0 is the latest release (`ap goal` refuses to replace a different goal on a
+plan with items, a missing plan names the other worktree, lock waits are bounded,
+and subagents are told not to run `ap`; see docs/current-plan.md for evidence).
+Installed via Homebrew and ~/.local on this Mac. Open: subagent behavior under the
+new skill is not confirmed in a real session, and only the goal guard is enforced.
+
+3.4.0 (3.3 progress pane redesign, a plan-name collision fix, and the pane opening
+only on `ap open`).
 
 3.0.0-beta.2 (prerelease, https://github.com/justn-hyeok/agent-progress/releases/tag/v3.0.0-beta.2)
 fixes all code-review findings and is installed in ~/.local; see current-plan.md.
